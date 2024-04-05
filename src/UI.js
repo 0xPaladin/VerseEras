@@ -28,12 +28,89 @@ const Main = (app)=>{
   `
 }
 
-const Wanderer = (app)=>{
-  SVG.find('svg').remove()
+const GalaxyUI = (app)=>{
   const {html} = app
   const {selection, show} = app.state
   let G = app.galaxy
-	let MS = G.majorSector
+  //get what to display 
+  let[what,sub="",sid=""] = show.split(".")
+
+  return html`
+  <div>
+	  <div class="f3 pointer underline-hover hover-blue absolute bg-white br1 ma1 pa2 ${selection == "" ? 'hidden' : ''}" onClick=${()=>app.updateState("show", [what,"MajorSector",selection.join()].join("."))}>View Sector [${selection == "" ? "" : selection.join(", ")}]</div>
+	  <div class="container galaxy"></div>
+  </div>
+  `
+}
+
+const MajorSectorUI = (app)=>{
+  const {html} = app
+  const {selection, show} = app.state
+  let G = app.galaxy
+  //get what to display 
+  let[what,sub="",sid=""] = show.split(".")
+
+  return html`
+  <div>
+	  <div class="container"></div>
+  </div>
+  `
+}
+
+/*
+	Eras 
+*/
+
+const Wanderer = (app)=>{
+  const {html} = app
+  const {selection, show} = app.state
+  let G = app.galaxy
+  let MS = G.majorSector
+  //get what to display 
+  let[what,sub="",sid=""] = show.split(".")
+
+  return html`
+  <div class="w-100 flex justify-center" id="map">
+	  ${sub == "" ? GalaxyUI(app) : MajorSectorUI(app)}
+  </div>
+  `
+}
+
+const Heralds = (app)=>{
+  const {html} = app
+  const {selection, show} = app.state
+  let G = app.galaxy
+  let MS = G.majorSector
+  //get what to display 
+  let[what,sub="",sid=""] = show.split(".")
+
+  return html`
+  <div class="w-100 flex justify-center" id="map">
+	  ${sub == "" ? GalaxyUI(app) : MajorSectorUI(app)}
+  </div>
+  `
+}
+
+const Frontier = (app)=>{
+  const {html} = app
+  const {selection, show} = app.state
+  let G = app.galaxy
+  let MS = G.majorSector
+  //get what to display 
+  let[what,sub="",sid=""] = show.split(".")
+
+  return html`
+  <div class="w-100 flex justify-center" id="map">
+	  ${sub == "" ? GalaxyUI(app) : MajorSectorUI(app)}
+  </div>
+  `
+}
+
+const WandererBAK = (app)=>{
+  const {html} = app
+  const {selection, show} = app.state
+  let G = app.galaxy
+  let MS = G.majorSector
   //get what to display 
   let[what,sub="",sid=""] = show.split(".")
 
@@ -42,7 +119,7 @@ const Wanderer = (app)=>{
   `
   const MSUI = ()=>html`
   <div class="ph2">
-	  <h2 class="ma0" onClick=${()=> app.show=show}>Sector [${sid}]</h2>
+	  <h2 class="ma0" onClick=${()=>app.show = show}>Sector [${sid}]</h2>
 	  <div class="i mb2">${MS.safety[0]}</div>
 	  ${sub == "" ? "" : Object.entries(MS._features).map(([key,val])=>html`
 	  <div class="pa1">
@@ -53,16 +130,13 @@ const Wanderer = (app)=>{
 
   return html`
   <div class="w-100 flex justify-center" id="map">
-	  <div>
-		  <div class="f3 pointer underline-hover hover-blue absolute bg-white br1 ma1 pa2 ${selection == "" ? 'hidden' : ''}" onClick=${()=>app.updateState("show", "Wanderer.MajorSector." + selection.join())}>View Sector [${selection == "" ? "" : selection.join(", ")}]</div>
-		  <div class="container ${sub == '' ? "galaxy" : ""}"></div>
-	  </div>
-	  ${sub=="" ? "" : MSUI()}
+	  ${sub == "" ? GalaxyUI(app) : MajorSectorUI(app)}
+	  ${sub == "" ? "" : MSUI()}
   </div>
   `
 }
 
-const Heralds = (app)=>{
+const HeraldsBAK = (app)=>{
   SVG.find('svg').remove()
   const {html, region} = app
   let {name, climate, terrain, alignment, safety, factions} = region
@@ -133,7 +207,7 @@ const Heralds = (app)=>{
   </div>`
 }
 
-const Frontier = (app)=>{
+const FrontierBAK = (app)=>{
   const {html, sector} = app
   const {show, active, selected, filter, filterSystem, isometric, galaxyView} = app.state
   let {factions, showSystems} = sector
