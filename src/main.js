@@ -23,8 +23,8 @@ import "../lib/localforage.min.js"
   UI Resources  
 */
 //Preact
-import {h, Component, render} from 'https://unpkg.com/preact?module';
-import htm from 'https://unpkg.com/htm?module';
+import {h, Component, render} from '../lib/preact.module.js';
+import htm from '../lib/htm.module.js';
 // Initialize htm with Preact
 const html = htm.bind(h);
 
@@ -169,6 +169,7 @@ class App extends Component {
 
   //main page render 
   render({}, {show, active, selected, filter, filterSystem, isometric, galaxyView}) {
+	  let G = this.galaxy
 	  
     //final layout 
     return html`
@@ -180,9 +181,7 @@ class App extends Component {
 		  <div class="dropdown w-100 ma1">
 			<div class="tc pointer dim underline-hover hover-blue db pa1 ba br2">Menu</div>
 			<div class="dropdown-content w-100 bg-white ba bw1 pa1">
-				<div class="link pointer underline-hover" onClick=${()=>this.show = "Heralds"}>Heralds</div>
-				<div class="link pointer underline-hover" onClick=${()=>this.show = "Frontier"}>Frontier</div>
-				<div class="link pointer underline-hover" onClick=${()=>this.show = "Wanderer"}>Wanderer</div>
+				${Object.keys(G._eras).map(e => html`<div class="link pointer underline-hover mv1" onClick=${()=>this.show = e}>${e}</div>`)}
 			</div>
 		  </div>
       </div>

@@ -3,7 +3,7 @@ import {CirclePacker} from '../lib/circlepacker.esm.min.js';
 
 import {RandBetween, SumDice, Likely, BuildArray} from './random.js'
 
-import {Faction,Ancients} from './factions.js';
+import {Faction, Ancients} from './factions.js';
 
 import {Region} from './region.js';
 import {Sector} from './sector.js';
@@ -114,7 +114,7 @@ class Galaxy {
     //function to add faction to specified array - sets position in galaxy 
     const addFaction = (F,e,t,c)=>{
       let jitter = [...BuildArray(2, ()=>RandBetween(1000, 4000)), RandBetween(0, 1000)]
-      let radius = t == 0 ? 1 : SumDice(t + "d100", RNG) * 50
+      let radius = t == 0 ? 10 : SumDice((1 + t) + "d100", RNG) * t * 5
 
       let j = this._eras[e].factions.length
       //sector 
@@ -144,15 +144,28 @@ class Galaxy {
     )
 
     //add know Ancients to Heralds
-    Ancients.forEach(a =>{
-      addFaction(new Faction({
-        id,
-        seed: [this.seed, 'Heralds', 'Faction', id].join("."),
-        era: ['Heralds', RNG.pickone['t',
-        'n']],
-        people: 'Ancient'
-      }), 'Heralds', 0, RNG.pickone(COLORS))
-    })
+    Ancients.forEach((a,i)=>{
+      //reset sectors 
+      _sectors = RNG.shuffle(VIABLESECTORS)
+      //get a color
+      let c = RNG.pickone(COLORS)
+      //get current faction array 
+      let fArr = this._eras.Heralds.factions
+      //number of times they will appear  
+      BuildArray(RNG.d6(), ()=>{
+        let id = fArr.length
+        let tier = RandBetween(1, 3, RNG)
+        addFaction(new Faction({
+          id,
+          seed: [this.seed, 'Heralds', 'Faction', id].join("."),
+          era: ['Heralds', RNG.pickone['t',
+          'n']],
+          people: 'Ancient'
+        }), 'Heralds', tier, c)
+      }
+      )
+    }
+    )
 
     //now build factions for each era 
     ERAS.forEach(e=>{
@@ -164,7 +177,7 @@ class Galaxy {
         id: fArr.length,
         seed: [this.seed, e, 'Faction', fArr.length].join("."),
         era: [e, t],
-      }), e, i, this.colors[i])))
+      }), e, i + 1, fArr.length < this.colors.length ? this.colors[fArr.length] : RNG.pickone(COLORS))))
     }
     )
     //starting sector 
@@ -217,20 +230,18 @@ class Galaxy {
 
     //get what to display 
     let[what,sub="",sid=""] = _what.split(".")
-    if (sub == 'MajorSector') {
-      this.setMajorSector(sid.split(",").map(Number))
-      return this.majorSector.display()
-    }
+    this._era = what
+
+    let svgSize = sub == "MajorSector" ? ['800','800'] : ['1200','800']
 
     let app = this.app
-    let svg = SVG().addTo('.container').size('1200', '800')
+    let svg = SVG().addTo('.container').size(...svgSize)
 
     let claimmap = svg.group().attr('id', 'claims')
-    let mSector = svg.group().attr('id', 'majorSectors')
 
     //major faction claims 
     this.factions.forEach((c,i)=>{
-      let _claim = svg.circle(c.radius).attr({
+      let _claim = svg.circle(c.radius*2).attr({
         cx: c.p[0],
         //+ GData[0] * LYTOPIXEL,
         cy: c.p[1]//+ GData[1] * LYTOPIXEL
@@ -245,43 +256,37 @@ class Galaxy {
     }
     )
 
-    //show sectors
-    let noSector = ['0,14', '0,0', '0,1', '1,0', '2,0', '2,1', '3,1', '3,0', '4,0', '1,1', '10,14', '11,14', '12,14', '13,14', '13,13', '14,13', '14,11', '14,12', '16,0', '17,0', '18,0', '19,0', '20,0', '21,0', '20,1', '21,1', '21,2', '21,7', '21,8'].concat(BuildArray(7, (_,i)=>BuildArray(6, (_,j)=>[15 + i, 9 + j].join()))).flat()
-    let imgX = 2000
-      , imgY = 1373.4;
-    let maxX = Math.floor(imgX * LYTOPIXEL / MAJORSECTOR) * MAJORSECTOR
-      , maxY = Math.floor(imgY * LYTOPIXEL / MAJORSECTOR) * MAJORSECTOR;
-    let nx = maxX / MAJORSECTOR
-      , ny = maxY / MAJORSECTOR;
-    BuildArray(nx, (_,j)=>BuildArray(ny, (_,k)=>{
-      let _x = j * MAJORSECTOR
-      let _y = k * MAJORSECTOR
-      //check if display 
-      let d = noSector.includes([j, k].join())
-      if (d)
-        return;
-      //establish position - any x,y correction 
-      let x = _x
-      let y = _y
+    if (sub == '') {
+      let mSector = svg.group().attr('id', 'majorSectors')
+      //show major sectors
+      NOBLANKS.forEach(([j,k])=>{
+        let x = j * MAJORSECTOR
+        let y = k * MAJORSECTOR
 
-      //create svg object
-      let s = svg.rect(MAJORSECTOR, MAJORSECTOR).attr({
-        x,
-        y
-      }).data({
-        id: [j, k]
-      }).addClass('majorSector').click(async function() {
-        let id = this.data("id")
-        console.log(id)
-        app.updateState("selection", id)
-      })
+        //create svg object
+        let s = svg.rect(MAJORSECTOR, MAJORSECTOR).attr({
+          x,
+          y
+        }).data({
+          id: [j, k]
+        }).addClass('majorSector').click(async function() {
+          let id = this.data("id")
+          console.log(id)
+          app.updateState("selection", id)
+        })
 
-      mSector.add(s)
+        mSector.add(s)
+      }
+      )
+
+      //viewbox - image adj size 
+      svg.attr('viewBox', [0, 0, ...MAXLY].join(" "))
+    } else if (sub == 'MajorSector') {
+      //change to number and set the sector 
+      sid = sid.split(",").map(Number)
+      this.setMajorSector(sid)
+      this.majorSector.display()
     }
-    ))
-
-    //viewbox - image adj size 
-    svg.attr('viewBox', [0, 0, maxX, maxY].join(" "))
   }
 }
 

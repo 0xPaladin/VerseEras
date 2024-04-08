@@ -91,6 +91,36 @@ const Heralds = (app)=>{
   `
 }
 
+const ExFrame = (app)=>{
+  const {html} = app
+  const {selection, show} = app.state
+  let G = app.galaxy
+  let MS = G.majorSector
+  //get what to display 
+  let[what,sub="",sid=""] = show.split(".")
+
+  return html`
+  <div class="w-100 flex justify-center" id="map">
+	  ${sub == "" ? GalaxyUI(app) : MajorSectorUI(app)}
+  </div>
+  `
+}
+
+const Firewall = (app)=>{
+  const {html} = app
+  const {selection, show} = app.state
+  let G = app.galaxy
+  let MS = G.majorSector
+  //get what to display 
+  let[what,sub="",sid=""] = show.split(".")
+
+  return html`
+  <div class="w-100 flex justify-center" id="map">
+	  ${sub == "" ? GalaxyUI(app) : MajorSectorUI(app)}
+  </div>
+  `
+}
+
 const Frontier = (app)=>{
   const {html} = app
   const {selection, show} = app.state
@@ -342,4 +372,4 @@ const Dialog = (app)=>{
   </div>`
 }
 
-export {Main, Dialog, Frontier, Heralds, Wanderer}
+export {Main, Dialog, Frontier, Heralds, Wanderer, ExFrame, Firewall}
