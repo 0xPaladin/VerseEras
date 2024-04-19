@@ -13,7 +13,10 @@ const chance = new Chance()
   https://localforage.github.io/localForage/
 */
 import "../lib/localforage.min.js"
-
+const DB = localforage.createInstance({
+  name: "VerseEras",
+  storeName: 'favorites',
+})
 /*
   SVG
   https://svgjs.dev/docs/3.0/getting-started/
@@ -27,6 +30,43 @@ import {h, Component, render} from '../lib/preact.module.js';
 import htm from '../lib/htm.module.js';
 // Initialize htm with Preact
 const html = htm.bind(h);
+
+//Simple roman numeral conversion 
+Number.prototype.romanNumeral = function() {
+  let n = this
+  var units = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"];
+
+  if (n < 0 || n >= 20) {
+    return n;
+  } else if (n >= 10) {
+    return "X" + (n - 10).romanNumeral();
+  } else {
+    return units[n];
+  }
+}
+
+//Simple roman numeral conversion 
+Number.prototype.suffix = function() {
+  let n = this % 10
+
+  if (this <= 0) {
+    return n;
+  } else if (this > 3 && this < 20) {
+    return this + 'th';
+  } else {
+    return this + ['st', 'nd', 'rd'][n - 1];
+  }
+}
+
+//clamp a number to a value 
+Number.prototype.clamp = function  (min,max) {
+  return this > max ? max : this < min ? min : this
+}
+
+//sum for array 
+Array.prototype.sum = function () {
+  return this.reduce((s,v)=>s+=v,0)
+}
 
 // capitalizes first character of a string
 String.prototype.capitalize = function() {
@@ -58,12 +98,15 @@ import*as UI from './UI.js';
 /*
   Declare the main App 
 */
+const ERAS = ["Heralds", "Frontier", "Firewall", "ExFrame", "Wanderer"]
 
 class App extends Component {
   constructor() {
     super();
     this.state = {
-      show: "Wanderer",
+      saves : [],
+      show: "Galaxy",
+      sub: "",
       reveal: [],
       dialog: "",
       //for UI selection 
@@ -74,36 +117,62 @@ class App extends Component {
       filterSystem: "All",
       selection: "",
       selected: "",
+      showBars : [true,true],
+      //time keeping 
+      period : 60, //ticks to a day 
+      tick : [0,0,0]
     };
 
+    this.DB = DB
     //use in other views 
     this.html = html
-
     //generate 
     this.galaxy = new Galaxy(this)
   }
 
   // Lifecycle: Called whenever our component is created
   async componentDidMount() {
-    this.show = "Wanderer"
-    //const canvas = document.getElementById("renderCanvas");
-    // Get the canvas element
-    //this.engine = new BABYLON.Engine(canvas,true);
+    //display galaxy
+    this.galaxy.display()
 
-    /*
-    // Register a render loop to repeatedly render the scene
-    this.engine.runRenderLoop(() => {
-      this.scene.render();
-    });
-    // Watch for browser/canvas resize events
-    window.addEventListener("resize", () => {
-      this.engine.resize();
-    });
-	*/
+    //now get ids for saves 
+    DB.iterate((value,key,iterationNumber)=>{
+      // Resulting key/value pair
+      this.state.saves.push(value)
+    }
+    ).then(() => this.refresh())
+
+    //timer 
+    setInterval(()=>{
+      this.tick()
+    }, 1000)
+    
+    //Watch for browser/canvas resize events
+    window.addEventListener("resize", ()=>{
+      this.galaxy.display()
+      this.refresh()
+    }
+    );
   }
 
   // Lifecycle: Called just before our component will be destroyed
   componentWillUnmount() {}
+
+  tick () {
+    let {period,tick} = this.state 
+    //clock timing 
+    tick[0]++
+    //check for day and year 
+    if(tick[0]==period){
+      tick[1]++
+      tick[0]=0
+    }
+    if(tick[1]==365){
+      tick[2]++
+      tick[1]=0
+    }
+    this.setState({tick})
+  }
 
   //Get data 
   get sector() {
@@ -134,7 +203,7 @@ class App extends Component {
     s[what] = val
     await this.setState(s)
 
-    this.galaxy.display(what=="show"? val : this.state.show)
+    this.galaxy.display()
   }
   refresh() {
     this.show = this.state.show
@@ -169,24 +238,11 @@ class App extends Component {
 
   //main page render 
   render({}, {show, active, selected, filter, filterSystem, isometric, galaxyView}) {
-	  let G = this.galaxy
-	  
+    let G = this.galaxy
+
     //final layout 
     return html`
-    <div class="relative flex flex-wrap items-center justify-between ph3 z-2">
-      <div>
-        <h1 class="pointer underline-hover mv2" onClick=${()=>this.cancel()}>Verse: ${show.split(".")[0]}</h1>
-      </div>
-      <div class="flex items-center">
-		  <div class="dropdown w-100 ma1">
-			<div class="tc pointer dim underline-hover hover-blue db pa1 ba br2">Menu</div>
-			<div class="dropdown-content w-100 bg-white ba bw1 pa1">
-				${Object.keys(G._eras).map(e => html`<div class="link pointer underline-hover mv1" onClick=${()=>this.show = e}>${e}</div>`)}
-			</div>
-		  </div>
-      </div>
-    </div>
-    <div class="absolute z-1 w-100 h-100 pa2">
+	<div class="absolute z-0 top-0 left-0 w-100 h-100 pa2">
       ${this.show}
     </div>
     ${this.dialog}
@@ -195,3 +251,10 @@ class App extends Component {
 }
 //<canvas id="renderCanvas"></canvas>
 render(html`<${App}/>`, document.body);
+
+function reportWindowSize() {
+  heightOutput.textContent = window.innerHeight;
+  widthOutput.textContent = window.innerWidth;
+}
+
+window.onresize = reportWindowSize;

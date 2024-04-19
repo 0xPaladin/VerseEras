@@ -14,6 +14,10 @@ h1, h2, h3 {
   display: none;
 }
 
+.favorite.selected {
+  color: gold;
+}
+
 .d-circle-sm {
   display: inline-block;
   width: 0.5em;
@@ -27,13 +31,14 @@ h1, h2, h3 {
   touch-action: none;
 }
 
-#map .galaxy{
+#map.galaxy {
   background: url( '../img/verse-galaxy.jpg' ) no-repeat;
   background-position: center;
-  background-size: cover;
+  background-size: contain;
 }
 
 .majorSector {
+  cursor: pointer;
   fill: white;
   fill-opacity: 0;
   stroke : white;
@@ -47,8 +52,8 @@ h1, h2, h3 {
 }
 
 .grid {
-  fill: white;
-  fill-opacity: 0;
+  fill: black;
+  fill-opacity: 1;
   stroke : white;
   stroke-width : 5;
   stroke-opacity: 0.5;
@@ -69,6 +74,40 @@ h1, h2, h3 {
   stroke-opacity: 1;
 }
 
+.planet {
+  cursor: pointer;
+  stroke: Aqua;
+  stroke-width : 1;
+  stroke-opacity: 0.5;
+}
+
+.planet:hover{
+  stroke-width : 5;
+  stroke-opacity: 1;
+}
+  
+.gasGiant {
+  fill-opacity: 0.70;
+}
+
+#planetoid {
+  stroke: Aqua;
+  stroke-width : 3;
+}
+
+.gasGiant .poly {
+  fill-opacity: 0;
+  stroke: black;
+  stroke-width : 1;
+  stroke-opacity: 0.25;
+}
+  
+.poly:hover {
+  stroke: white;
+  stroke-width : 2;
+  stroke-opacity: 1;
+}
+
 .hex {
   fill: white;
   fill-opacity: 0;
@@ -86,8 +125,8 @@ h1, h2, h3 {
 }
 
 .dropdown {
-  position: relative;
-  display: inline-block;
+  /* position: relative; */
+  /* display: inline-block; */
   direction: rtl;
 }
 
@@ -115,3 +154,4 @@ h1, h2, h3 {
 .dropdown:focus .dropdown-content {
   display: block;
 }
+

@@ -1,6 +1,5 @@
 import {RandBetween, SumDice, Likely, WeightedString, BuildArray} from './random.js'
 import*as Data from './data.js';
-import {CreateAncient} from './ancients.js';
 
 const ECONOMY = ['struggling', 'poor', 'comfortable', 'wealthy', 'booming']
 const MILITARY = ['pathetic', 'weak', 'capable', 'strong', 'mighty']
@@ -133,14 +132,4 @@ class Faction {
   }
 }
 
-const Claim = (system,color,RNG)=>{
-  let sector = system.parent
-  let hi = system._habitability
-  if (hi != 1 && Likely(30, RNG)) {
-    system.claim = RNG.pickone(sector._major)
-    return
-  }
-  return new Faction(system,color)
-}
-
-export {Claim,Faction,RandomPeople}
+export {Faction,RandomPeople}

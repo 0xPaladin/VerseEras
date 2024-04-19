@@ -1,3 +1,5 @@
+const ERAS = ["Heralds", "Frontier", "Firewall", "ExFrame", "Wanderer"]
+
 //simple roman numeral generator for naming planets after their star
 const romanNumeral = n=>{
   var units = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"];
@@ -28,19 +30,174 @@ const Main = (app)=>{
   `
 }
 
-const GalaxyUI = (app)=>{
+const Galaxy = (app)=>{
   const {html} = app
-  const {selection, show} = app.state
+  let {saves, showBars,tick,period} = app.state
   let G = app.galaxy
-  //get what to display 
-  let[what,sub="",sid=""] = show.split(".")
+  let MS = G.majorSector
+  let S = G.system
+  let P = G.planet
+
+	let ci = ['Galaxy','Sector','System','Planet']
+  let chain = ["Galaxy"]
+  G._show == 'Sector' ? chain.push(`:: Sector [${MS.id.join()}]`) : G._show == 'System' ? chain.push(`:: Sector [${MS.id.join()}]`, `System [${S.name}]`) : G._show == 'Planet' ? chain.push(`:: Sector [${MS.id.join()}]`, `System [${S.name}]`, `:: ${P.name}`) : null
+
+  const SlideBarRight = html`<div class="db tc v-mid pointer dim ba br2 mh1 pa2 ${showBars[1] ? "" : "rotate-180"}" onClick=${()=>app.updateState("showBars", showBars, showBars[1] = !showBars[1])}>➤</div>`
+  const SlideBarLeft = html`<div class="db f4 tc v-mid pointer dim ba br2 mr1 pa2 ${showBars[0] ? "rotate-180" : ""}" onClick=${()=>app.updateState("showBars", showBars, showBars[0] = !showBars[0])}>➤</div>`
+
+  let Filter = (filter,what)=>app.refresh(what == 'Galaxy' ? G.sectorFilter = filter : MS.display({
+    filter
+  }))
+
+  const systemFilters = ["All", "Earthlike", "Survivable", "Factions", "Settlements", "Ruins", "Gates", "Resources", "Outposts", "Dwellings", "Landmarks"]
+  let showSystems = MS ? MS.showSystems(MS.filter) : []
+  //filter systems 
+  let SystemFilterSelect = ()=>html`
+  <div class="dropdown" style="direction: ltr;">
+	<div class="f4 tc pointer dim underline-hover hover-blue db pa2 ba br2">System Filter: ${MS.filter} [${showSystems.length}]</div>
+    <div class="dropdown-content w-100 bg-white ba bw1 pa1">
+	    ${systemFilters.map(sf=>html`
+		<div class="link pointer underline-hover" onClick=${()=>Filter(sf)}>${sf}</div>`)}
+	</div>
+  </div>`
+
+  //filter sectors 
+  const galaxyFilters = ["Favorites", "Historic Factions", "Orbitals", "Gates", "Wormholes"]
+  let showSectors = G && G._show == 'Galaxy' ? G.showSectors() : []
+  let SectorFilterSelect = ()=>html`
+  <div class="dropdown" style="direction: ltr;">
+	<div class="f4 tc pointer dim underline-hover hover-blue db pa2 ba br2">Sectors: ${G.sectorFilter} [${showSectors.length}]</div>
+	<div class="dropdown-content w-100 bg-white ba bw1 pa1">
+		${galaxyFilters.map(sf=>html`
+		<div class="link pointer underline-hover" onClick=${()=>Filter(sf, 'Galaxy')}>${sf}</div>`)}
+	</div>
+  </div>`
+
+  //favorites 
+  const LoadGalaxy = html`
+  <div class="dropdown w-100">
+	  <div class="tc bg-white pointer dim ba br2 pa2">ID: ${G.seed}</div>
+	  <div class="dropdown-content w-100 bg-white ba bw1 pa1">
+		  ${saves.map(s=>html`<div class="f4 link pointer underline-hover ma2" onClick=${()=>app.refresh(G.load(s))}>Load ${s.seed}</div>`)}
+	  </div>
+  </div>`
+  //☰➤
 
   return html`
-  <div>
-	  <div class="f3 pointer underline-hover hover-blue absolute bg-white br1 ma1 pa2 ${selection == "" ? 'hidden' : ''}" onClick=${()=>app.updateState("show", [what,"MajorSector",selection.join()].join("."))}>View Sector [${selection == "" ? "" : selection.join(", ")}]</div>
-	  <div class="container galaxy"></div>
+  <div id="map" class="z-0 absolute top-0 left-0 w-100 h-100 ${G._show == 'Galaxy' ? "galaxy" : ""}"></div>
+  <div class="absolute top-0 left-0pa2" style="max-width: 20rem;"> 
+	<h3 class="ma0 pv1" style="background-color: rgba(255,255,255,0.5);">
+		<h2 class="flex ma0" onClick=${()=>app.refresh()}>
+			<span>Verse :: </span> 
+			<div class="ml2 ${G._show != 'System' ? 'dropdown' : ''}" style="direction: ltr;">
+				<div class="pointer underline-hover hover-blue">${G._era}</div>
+				<div class="dropdown-content w-100 bg-white ba bw1 pa1">
+					${ERAS.map(e=>html`<div class="f4 link pointer underline-hover ma2" onClick=${()=>G.display("Galaxy", G.era = e)}>${e}</div>`)}
+				</div>
+			</div>
+		</h2>
+		<div class="flex items-center flex-wrap">
+			${chain.map((c,i)=>html`<div class="b pointer underline-hover hover-blue flex mh1" onClick=${()=>app.refresh(G._show = ci[i],G._option=[])}>${c}</div>`)}
+			${G._show == 'System' ? html`<div class="f3 gray pointer favorite ${S.isFavorite ? "selected" : ""}" onClick=${()=>app.refresh(S.manageFavorites())}>★</div>` : ""}
+		</div>
+	</h3>
+	<div style="background-color: rgba(255,255,255,0.5);">
+		${G._show == 'System' && S.POI ? html`
+		<div class="flex ba br1 mb1 ph2">
+			<div class="b mr2">POI:</div>
+			<div>${S.POI.map(p=>html`
+				<div>❖${p.text || p.short}</div>
+				<div class="i ph3">➣${p.whereText}</div>`)}
+			</div>
+		</div>` : ""}
+		${G._show == 'System' && S.HI < 3 ? html
+		  `<div class="flex ba br1 mb1 ph2">
+			  <div class="b mr1">Habitable:</div>
+			  <div>${S.habitible.flat().map(p=>html`
+				  <div class="pointer underline-hover hover-blue" onClick="${()=>app.updateState("show", "Galaxy", G._show = "Planet", G.planet = p, G._option = [])}">${p.name}</div>`)}
+			  </div>
+			</div>` : ""}
+		${G._option.length == 0 ? "" : G._option[1]}
+	</div>
+	<div class="flex" style="background-color: rgba(255,255,255,0.5);">
+		${!['System','Planet'].includes(G._show) ? SlideBarLeft : ""}
+		<div class="w-100 ${showBars[0] ? "" : "dn-ns"}">
+			${G._show == 'Galaxy' ? SectorFilterSelect() : ""}
+			${G._show == 'Sector' ? SystemFilterSelect() : ""}
+			${G._show == 'Planet' ? P.slider : ""}
+		</div>
+	</div>
+	<div class="${showBars[0] ? "" : "dn-ns"}">
+		${G._show == 'Galaxy' ? html`
+			<div class="vh-75 overflow-x-hidden overflow-auto">
+				${showSectors.map(s=>html`<div class="tc pointer dim flex items-center justify-between db ba br2 ma1 pa2" onClick=${()=>app.refresh(G.display("Sector", G._option = [], G.setMajorSector(s)))}>Sector [${s.join()}]</div>`)}
+			</div>` : ""}
+		${G._show == 'Sector' ? html`<div class="vh-75 overflow-x-hidden overflow-auto">${showSystems.map(s=>SectorSystemUI(app, s))}</div>` : ""}
+		</div>
+  </div>
+  <div class="absolute top-0 right-0 w5 pa2">
+	  <div class="h1 w-100 mb1">
+		  <div class="tc b white h-100 bg-green br2" style="width:${100*tick[0]/period}%;">Day ${tick[1]+1}</div>
+	  </div>
+	  <div class="w-100 f4 flex justify-end mb1">
+		  <div class="w-100 ${showBars[1] ? "" : "dn-ns"}">
+			  ${G._show == 'Galaxy' ? LoadGalaxy : ""}
+		  </div>
+		  ${!['System','Planet'].includes(G._show) ? SlideBarRight : ""}
+	  </div>
+	  <div class="${showBars[1] ? "" : "dn-ns"}">
+		  ${G._show == 'Galaxy' ? html`<div class="f4 tc bg-white pointer dim ba br2 pa2" onClick=${()=>app.dialog = "GalaxyFactionUI"}>Show Factions</div>` : ""}
+	  </div>
   </div>
   `
+}
+
+const SectorSystemUI = (app,s)=>app.html`
+<div class="pointer flex items-center justify-between db ba br2 ma1 pa2" onClick=${()=>app.updateState("show", "Galaxy", app.galaxy._show = "System", app.galaxy._option = [], app.galaxy.system = s)}>
+	<div>${s.name}</div>
+	<div>
+		${s._planets.length}<div class="d-circle-sm"div class="d-circle-sm" style="background-color:${s.UIColor}"></div>
+	</div>
+</div>`
+
+const GalaxyFactionUI = (app)=>{
+  const {html, galaxy} = app
+
+  let FbyTier = [4, 3, 2, 1].map(t=>galaxy.factions.filter(f=>f.tier == t))
+
+  //${F.form != "alien" ? html`<div>Random Mission: ${mission} <span class="b white pointer underline-hover bg-green br1 ph1" onClick=${()=>app.updateState('mission', F.mission())}>↻</span></div>` : ""}
+
+  const FUI = (F)=>html`
+  <div class="bb">
+	<h4 class="mb0 mt2">${F.name} </h4>
+    <div class="w-100">
+      <div class="i mb1">${F.eraType}, ${F.about.join(", ")}</div>
+      <div class="ph2">
+		  <div><b>Values:</b> ${F.values.join("/")}</div>
+		  <div><b>Tech:</b> ${F.style} ${F.tech}</div>
+	      <div class="flex"><b>Sectors:</b> ${F.claims.map(c=>html`<div class="pointer underline-hover hover-blue mh1">[${c.sid.join()}]</div>`)}</div>
+	      <div class="flex">
+	        <span class="b">Goals: </span>
+			<div class="mh2">${F.goals.map(g=>html`<div>${g.goal} [${g.clock}]</div>`)}</div>
+	      </div>
+	  </div>
+    </div>
+  </div>
+  `
+
+  return html`
+  <div class="vh-75" style="width:600px;">
+	<div class="flex items-center justify-between pb2 mb2 bb">
+      <h2 class="ma0">Factions</h2>
+      <div class="pointer dim underline-hover hover-orange b ba pa2" onClick=${()=>app.dialog = ""}>X</div>
+    </div>
+	${FbyTier.map((f,i)=>html`
+	<div class="mb2 pb1 bb">
+		<h3 class="ma0">Tier ${4 - i}</h3>
+		${f.map(FUI)}
+	</div>
+	`)}
+  </div>`
 }
 
 const MajorSectorUI = (app)=>{
@@ -325,41 +482,9 @@ const System = (app)=>{
   `
 }
 
-const Faction = (app)=>{
-  const {html, sector} = app
-  let[what,id,ui] = app.state.dialog.split(".")
-  let F = sector.factions.find(f=>f.id == Number(id))
-
-  let mission = app.state.mission = F.mission()
-
-  return html`
-  <div style="width:600px;">
-    <div class="flex items-center justify-between">
-      <h2 class="mb0">${F.name}</h2>
-      <div class="pointer dim underline-hover hover-orange b ba pa2" onClick=${()=>app.dialog = ""}>X</div>
-    </div>
-    <div class="w-100">
-      <div>${F.about.join(", ")}</div>
-      <div class="pa2">
-        <div>People: ${F.people}</div>
-        <div>Values: ${F.values.join("/")}</div>
-        <div>Tech: ${F.style} ${F.tech}</div>
-        ${F.form == "alien" ? html`<div>Thralls: ${F.thralls.map(t=>t.text).join(", ")}</div>` : ""}
-        ${F.form != "alien" ? html`<div>Random Mission: ${mission} <span class="b white pointer underline-hover bg-green br1 ph1" onClick=${()=>app.updateState('mission', F.mission())}>↻</span></div>` : ""}
-      </div>
-      <h3 class="ma0">Claims</h3>
-      <div class="flex flex-wrap pa2">
-        ${F.claims.map(c=>html`<div class="pointer underline-hover br bl hover-blue ph1" onClick=${()=>app.dialog = "System." + c.i}>${c.name}</div>`)}
-      </div>
-    </div>
-  </div>
-  `
-}
-
 const D = {
   Main,
-  System,
-  Faction
+  GalaxyFactionUI
 }
 const Dialog = (app)=>{
   let[what,id,ui] = app.state.dialog.split(".")
@@ -372,4 +497,4 @@ const Dialog = (app)=>{
   </div>`
 }
 
-export {Main, Dialog, Frontier, Heralds, Wanderer, ExFrame, Firewall}
+export {Main, Dialog, Galaxy}

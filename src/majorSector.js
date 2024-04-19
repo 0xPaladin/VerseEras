@@ -4,9 +4,13 @@ import {random_name, isBadWord} from './random_name.js';
 
 import {System} from './starSystem.js';
 
+import {CreatePOI} from './poi.js';
+
 import {RandomPeople} from './people.js';
 
 import {Elements, Magic} from './data.js';
+
+const ERAS = ["Heralds", "Frontier", "Firewall", "ExFrame", "Wanderer"]
 
 /*
   Isometric 
@@ -17,132 +21,6 @@ const toIsometric = (_x,_y,_z)=>{
     x: (_x - _y) * 0.866025,
     y: _z + (_x + _y) * 0.5
   }
-}
-
-/*
-  Feature generation 
-*/
-const FACTIONTYPES = ['common', 'criminal', 'revolutionary', 'military', 'religious', 'craft', 'trade', 'industrial', 'academic', 'arcane']
-
-const FEATURES = {
-  'creature'(R) {
-    let i = R.features.length
-    let RNG = new Chance([R.seed, 'feature', i].join("."))
-    let animal = RandomPeople(RNG, 'animal')
-    let purpose = RNG.weighted(['wild', 'sport', 'livestock', 'military', 'industrial', 'labor'], [3, 1, 1, 1, 1, 1])
-
-    let data = {
-      i,
-      'what': 'creature',
-      purpose,
-      data: animal,
-      text: `${animal.type} [${animal.size}, ${purpose}]`
-    }
-    return data
-  },
-  'hazard'(R) {
-    let i = R.features.length
-    let RNG = new Chance([R.seed, 'feature', i].join("."))
-
-    let mp = RNG.pickone(RNG.pickone([...Elements, ...Magic]).split("/"))
-    let type = RNG.weighted([`magical [${mp}]`, 'techtonic', 'chasm,crevasse,abyss,rift', 'bog,mire,tarpit,quicksand', 'defensive trap', 'blizzard,thunderstorm,sandstorm', 'fire,flood,avalanche', 'mist,fog,murk,gloom,miasma'], [1, 1, 2, 2, 1, 3, 1, 1])
-    type = RNG.pickone(type.split(","))
-
-    let data = {
-      i,
-      'what': 'hazard',
-      type,
-      text: `Hazard: ${type}`
-    }
-    return data
-  },
-  'obstacle'(R) {
-    let i = R.features.length
-    let RNG = new Chance([R.seed, 'feature', i].join("."))
-
-    let mp = RNG.pickone(RNG.pickone([...Elements, ...Magic]).split("/"))
-    let type = RNG.weighted([`magical [${mp}]`, 'defensive barrier', 'cliff,escarpment,crag,bluff', 'dense forest,bog,swamp', 'river,ravine,crevasse,chasm,abyss'], [1, 2, 3, 3, 3])
-    type = RNG.pickone(type.split(","))
-
-    let data = {
-      i,
-      'what': 'obstacle',
-      type,
-      text: `Obstacle: ${type}`
-    }
-    return data
-  },
-  'area'(R) {
-    let i = R.features.length
-    let RNG = new Chance([R.seed, 'feature', i].join("."))
-
-    let mp = RNG.pickone(RNG.pickone([...Elements, ...Magic]).split("/"))
-    let h = this.hazard(R)
-    let o = this.obstacle(R)
-    let type = RNG.weighted([`magical [${mp}]`, h.type, o.type, 'territory', 'icefield,rocky land,dense forest,bog,swamp'], [1, 2, 2, 3, 4])
-    type = RNG.pickone(type.split(","))
-
-    let data = {
-      i,
-      'what': 'area',
-      type,
-      text: `Area: ${type}`
-    }
-    return data
-  },
-  'ruin'(RNG) {
-  },
-  'site'(R) {
-    let i = R.features.length
-    let RNG = new Chance([R.seed, 'feature', i].join("."))
-    let type = RNG.weighted(['ruin', 'dwelling', 'outpost', 'landmark', 'resource'], [3, 2, 1, 1, 2])
-    let data = {
-      i,
-      'what': 'site',
-      type,
-      text: `${type.capitalize()}`
-    }
-
-    if (type == 'ruin') {
-      data[type] = RNG.pickone(['Caverns', 'Ruined Settlement', 'Prison', 'Mine', 'Tomb', 'Hideout', 'Stronghold', 'Temple', 'Archive', 'Laboratory', 'Gate'])
-      data.text += ` [${data[type]}]`
-    } else if (type == 'dwelling') {
-      data[type] = RNG.pickone(FACTIONTYPES)
-      data.who = ""
-      data.text += ` [${data[type]}]`
-    } else if (type == 'outpost') {
-      data[type] = RNG.pickone(RNG.pickone(['tollhouse/checkpoint', 'trading house', 'inn', 'tower/fort/base']).split("/"))
-      data.text += ` [${data[type]}]`
-    } else if (type == 'landmark') {
-      data[type] = RNG.weighted(['Plant/Tree', 'Rock/Earth', 'Water', 'faction', 'Statue'], [3, 3, 2, 1, 2])
-      data.text += ` [${data[type]}]`
-    } else if (type == 'resource') {
-      data[type] = RNG.weighted(['rare earth elements', 'quantum materials', 'hyper materials'], [3, 3, 1])
-      data.text += ` [${data[type]}]`
-    }
-
-    return data
-  },
-  'factionOutpost'(R) {
-    let i = R.features.length
-    let RNG = new Chance([R.seed, 'feature', i].join("."))
-    let data = {
-      i,
-      'what': 'factionOutpost',
-      text: `Faction Outpost`
-    }
-    return data
-  },
-  'settlement'(R) {
-    let i = R.features.length
-    let RNG = new Chance([R.seed, 'feature', i].join("."))
-    let data = {
-      i,
-      'what': 'settlement',
-      text: `Settlement`
-    }
-    return data
-  },
 }
 
 /*
@@ -165,36 +43,14 @@ class MajorSector {
     //establish random gen 
     let RNG = new Chance(this.seed)
 
-    let alignment = this.alignment = "neutral"
-    let alMod = 0
+    let FA = this.factions.map(f=>f.alignment)
+    let alignment = this.alignment = FA.length > 0 ? RNG.pickone(FA) : ['Heralds', 'ExFrame'].includes(G._era) ? RNG.pickone(['chaotic', 'evil']) : "neutral"
+    let alMod = [5, 3, 0, -3, -5][['chaotic', 'evil', 'neutral', 'good', 'lawful'].indexOf(alignment)]
     let sR = RNG.d12() + alMod
     let safety = this.safety = sR <= 1 ? ["safe", 3] : sR <= 3 ? ["unsafe", 2] : sR <= 9 ? ["dangerous", 1] : ["perilous", 0]
 
     //function to create a random point in the sector
     const PointInSector = ()=>[...BuildArray(2, (_,i)=>id[i] * MAJORSECTOR + RandBetween(1, 5000, RNG)), RandBetween(1, 1000, RNG)]
-
-    //features 
-    let nF = SumDice('4d4+9', RNG)
-    let fbc = this._features = {
-      'Creatures': [],
-      'Areas': [],
-      'Sites': []
-    }
-    let _feature = (r)=>r <= 1 ? 'creature' : r == 2 ? 'hazard' : r == 3 ? 'obstacle' : r == 4 ? 'area' : r <= 11 ? 'site' : r <= 12 ? 'factionOutpost' : 'settlement'
-    BuildArray(nF, ()=>{
-      //first is creature 
-      let f = this.features.length == 0 ? _feature(1) : _feature(RNG.d12() + safety[1])
-      //get point and data  struct 
-      let data = {
-        p: PointInSector(),
-        color: "red",
-        what: f
-      }
-
-      let what = f == 'creature' ? fbc.Creatures : ['hazard', 'obstacle', 'area'].includes(f) ? fbc.Areas : fbc.Sites
-      what.push(Object.assign(data, FEATURES[f](this)))
-    }
-    )
 
     //make a name and reject badwords
     this._names = []
@@ -208,30 +64,110 @@ class MajorSector {
         }
       }
       this._names.push(new_name)
+      return new_name
     }
 
     //systems 
     this._loc = []
-    this.systems = []
+    this._systems = []
+    //poi 
+    let _poi = (r)=>r <= 4 ? 'raiders' : r <= 6 ? 'hazard' : r == 7 ? 'obstacle' : r <= 12 ? 'site' : 'settlement'
     //number of systems 
     let ns = 333
     for (let i = 0; i < ns; i++) {
-      this._loc.push([...id.map((p)=>p*MAJORSECTOR+RandBetween(1,5000,RNG)),RandBetween(1,1000,RNG)])
+      this._loc.push([...id.map((p)=>p * MAJORSECTOR + RandBetween(1, 5000, RNG)), RandBetween(1, 1000, RNG)])
       makeName()
-      this.systems.push(new System(this,i))
+
+      //make and push to systems 
+      this._systems.push(new System(this,i))
     }
 
-    console.log(BuildArray(5,(_,i)=>new System(this,500+i,'G')))
+    //create faction sytems 
+    let allF = this.allFactions
+    this._fs = allF.map(f=>f.systemsInSector(this)).flat().map(s=>{
+      //check for planet 
+      let HI = s.type == "Planet" ? s.creator.isAncient || s.creator.isProtoAncient ? RNG.pickone([1, 2, 3]) : 1 : null
+      //create system 
+      let S = new System(this,s.i,HI)
+      S._loc = s.p
+      S._name = makeName()
+      S.POI = [CreatePOI.faction(S, s, RNG)]
+      return S
+    }
+    )
 
+    this.filter = "All"
     console.log(this)
   }
-  get xy () {
-    return this.id.map(p=>p * MAJORSECTOR)
+  //add a system to the sector 
+  addSystem(opts, RNG=chance) {
+    let i = opts.i || RandBetween(1000000, 20000000, RNG)
+    //create system 
+    let S = new System(this,i)
+    if (opts.HI) {
+      //repeat until we get a system 
+      while (opts.HI != S.HI) {
+        i += 10000
+        S = opts.HI < 3 ? new System(this,i,opts.HI) : new System(this,i)
+      }
+    }
+
+    return S
   }
   //get habitable systems
-  get habitable () {
-    let hi = [1,2,3,4]
-    return hi.map(i => this.systems.filter(s=> s._habitability == i))
+  get habitable() {
+    return BuildArray(4, (_,i)=>{
+      let planets = []
+      let moons = []
+      this.systems.forEach(s=>{
+        planets = planets.concat(s.planetHI[i])
+        moons = moons.concat(s.moonHI[i])
+      }
+      )
+
+      return {
+        planets,
+        moons
+      }
+    }
+    )
+  }
+  get systems() {
+    return this._systems.concat(this._fs)
+  }
+  showSystems(filter) {
+    //["All","Earthlike", "Survivable", "Factions", "Ruins", "Gates", "Resources", "Outposts", "Dwellings", "Landmarks"]
+
+    let hab = ["Earthlike", "Survivable"]
+    let poi = ["Settlements", "Ruins", "Gates", "Resources", "Outposts", "Dwellings", "Landmarks"]
+    let res = []
+
+    if (hab.includes(filter)) {
+      res = this.systems.filter(s=>s.HI == hab.indexOf(filter) + 1)
+    } else if (filter == "Factions") {
+      res = this.systems.filter(s=>s.POI && s.POI.reduce((state,poi)=>{
+        return state || poi.f || poi.creator
+      }
+      , false))
+    } else if (filter == "Ruins") {
+      res = this.systems.filter(s=>s.POI && s.POI.reduce((state,poi)=>{
+        return state || poi.what == "Ruin" || poi.isRuin
+      }
+      , false))
+    } else if (poi.includes(filter)) {
+      let what = filter.slice(0, -1)
+      res = this.systems.filter(s=>s.POI && s.POI.reduce((state,poi)=>{
+        return state || poi.what == what || poi.type == what
+      }
+      , false))
+    } else {
+      res = this.systems
+    }
+
+    return res.sort((a,b)=>a.name < b.name ? -1 : 1)
+  }
+  get system() {
+    return this.systems[this._system]
   }
   get features() {
     return Object.values(this._features).flat()
@@ -239,38 +175,46 @@ class MajorSector {
   get wormhole() {
     return null
   }
-  get withinClaim() {
-    let F = this.galaxy.era.factions
-    //top left position 
-    let[sx,sy] = this.id.map(p=>p * MAJORSECTOR)
-    let check = BuildArray(3, (_,i)=>BuildArray(3, (_,j)=>[sx + MAJORSECTOR * i / 2, sy + MAJORSECTOR * j / 2])).flat()
-    return check.map(([px,py])=>{
-      let _f = F.filter(f=>{
-        let [x,y] = f.p
-        let dx = px-x
-          , dy = py-y;
-          return Math.sqrt(dx*dx + dy*dy) < f.radius
-      }
-      )
-      return {
-        px,
-        py,
-        f: _f
-      }
-    }
-    )
+  /*
+    Sector Data lookup 
+  */
+  distance(x, y) {
+    let[sx,sy] = this.id
+    let dx = x - sx
+      , dy = y - sy;
+    let d = Math.sqrt(dx * dx + dy * dy)
+    return d
   }
-  async display() {
+  //check for same sector 
+  isSameSector(x, y) {
+    return this.id[0] == x && this.id[1] == y
+  }
+  /*
+    faction information 
+  */
+  get closestFaction() {
+    let fd = this.galaxy.factions.map(f=>f.sectors.map(s=>[this.distance(...s), f])).flat().sort((a,b)=>a[0] - b[0])
+    return fd[0][1]
+  }
+  get pastFactions() {
+    let G = this.galaxy
+    let e = G.eraList.slice(0, G.eraList.indexOf(this.galaxy._era))
+    return this.allFactions.filter(f=>e.includes(f.era))
+  }
+  get allFactions() {
+    return this.galaxy._factions.filter(f=>f.claims.filter(c=>this.isSameSector(...c.sid)).length > 0)
+  }
+  get factions() {
+    return this.galaxy.factions.filter(f=>f.claims.filter(c=>this.isSameSector(...c.sid)).length > 0)
+  }
+
+  async display(opts={}) {
     let app = this.app
-    await app.setState({
-      selection: ''
-    })
-
     let svg = SVG('svg')
-    //set background color 
-    svg.css('background-color', 'black')
 
-    let isometric = app.state.isometric == 'Isometric'
+    //get display options 
+    let {filter=this.filter, isometric=false} = opts
+    this.filter = filter
 
     let[sx,sy] = [...this.id.map(p=>p * MAJORSECTOR)]
     let n = 5
@@ -278,6 +222,8 @@ class MajorSector {
     let _z = 500
     //create the grid 
     let gridmap = svg.group().attr('id', 'gridmap')
+    gridmap.back()
+
     BuildArray(n, (_,i)=>BuildArray(n, (_,j)=>{
       let xyz = [[sx + i * grid, sy + j * grid, _z], [sx + i * grid + grid, sy + j * grid, _z], [sx + i * grid + grid, sy + j * grid + grid, _z], [sx + i * grid, sy + j * grid + grid, _z]].map(_xyz=>{
         let {x, y} = isometric ? toIsometric(..._xyz) : {
@@ -292,32 +238,12 @@ class MajorSector {
     ))
 
     //create the stars 
-    let POI = svg.group().attr('id', 'POI')
-    this.features.forEach((f)=>{
-      let {x, y} = isometric ? toIsometric(...f.p) : {
-        x: f.p[0],
-        y: f.p[1]
-      }
-
-      let poi = svg.circle(30).attr({
-        cx: x,
-        cy: y
-      }).fill(f.color).addClass('poi').data({
-        f
-      }).click(async function() {
-        let _f = this.data("f")
-
-        console.log(_f)
-      })
-
-      POI.add(poi)
-    }
-    )
-
-    //create the stars 
     let stars = svg.group().attr('id', 'stars')
-    this.systems.forEach((s)=>{
+    let systems = this.showSystems(filter)
+
+    systems.forEach((s)=>{
       let sector = this
+      let G = this.galaxy
       let _p = s.point
       let {x, y} = isometric ? toIsometric(..._p) : {
         x: _p[0],
@@ -328,12 +254,19 @@ class MajorSector {
         cx: x,
         cy: y
       }).fill(s._color).addClass('star').data({
-        id : s.id
+        id: s.id
       }).click(async function() {
         let id = this.data("id")
 
-        console.log(sector.systems[id])
-        //app.dialog = "System." + _i
+        let _s = sector.systems.find(s=>s.id == id)
+        let _POI = _s.POI || []
+        console.log(_s)
+        //build html to show 
+        let html = sector.app.html
+        let text = html`
+            <div class="f4 tc pointer dim bg-light-green br2 pa2 mb1"  onClick=${(e)=>G.followOption(G.system = s)}>View ${_s.name} System</div>
+            ${_POI.map(p=>html`<div class="f5 i ph2 mb2">${p.short}</div>`)}`
+        app.refresh(G._option = [['setVisibleSystem', id], text])
       })
       if (s.claim > -1) {
         _star.attr({
@@ -349,6 +282,55 @@ class MajorSector {
     //adjust viewbox to see sector 
     svg.attr('viewBox', [...this.id.map(p=>p * MAJORSECTOR), MAJORSECTOR, MAJORSECTOR].join(" "))
   }
+}
+
+const History = ()=>{
+  G.eraList.filter((e,i)=>i <= G.eraList.indexOf(G._era)).forEach((e,i)=>{
+    let ef = this.allFactions.filter(f=>f.era == e)
+    //keep all systems if empty 
+    if (_fs.length == 0) {
+      _fs = ef.map(f=>f.systems).flat()
+      return
+    }
+    //if not empty, see what will be kept 
+    if (ef.length == 0) {
+      /*
+          Settlements 'Orbital,Planet,Moon,Asteroid'
+          Sites 'Dwelling,Outpost,Resource'
+          May disappear due to progression of time 
+        */
+      _fs = _fs.filter(f=>'Planet,Resource'.includes(f.type) ? true : f.type == 'Orbital' ? Likely(75, RNG) : RNG.bool()).map(s=>Object.assign(s, {
+        isRuin: true
+      }))
+    } else {
+      let tsum = 0
+        , nfs = _fs.length;
+      //if multiple factions split between 
+      ef.map(f=>{
+        tsum += f.tier
+        return f.tier
+      }
+      ).map((t,j)=>Math.floor(nfs * t / tsum)).map(n=>_fs.splice(0, n)).forEach((_efs,j)=>_efs.forEach(sArr=>{
+        let _f = ef[j]
+        //see what the new faction keeps
+        let cfs = _f.systems
+        //core systems of the faction 
+        let core = cfs.splice(0, _f.claims.length)
+        //keep certain items, set faction to current 
+        let kfs = sArr.filter(s=>'Planet,Resource'.includes(s.type) ? true : s.type == 'Orbital' ? Likely(85, RNG) : 'Moon,Asteroid'.includes(s.type) ? Likely(65, RNG) : RNG.bool()).map(s=>Object.assign(s, {
+          f: _f,
+          isRuin: false
+        }))
+        //if keep systems is less than faction systems, push 
+        let dk = cfs.length - kfs.length
+        dk <= 0 ? null : BuildArray(dk, ()=>kfs.push(cfs.splice(0, 1)))
+        //add core and kept 
+        _fs.push(...kfs, ...core)
+      }
+      ))
+    }
+  }
+  )
 }
 
 export {MajorSector}
