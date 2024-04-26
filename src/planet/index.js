@@ -1,7 +1,6 @@
 //https://stackoverflow.com/questions/55983221/auto-generate-pixel-planets-in-canvas
 //https://github.com/dgreenheck/threejs-procedural-planets
 
-import {RandBetween, SumDice, Likely, BuildArray} from '../random.js'
 import {starTypeData, gravity, blackbody, planetTypeData} from '../astrophysics.js';
 import {GasGiantColors, RockyColors, TerrainColors} from "../data.js"
 import {Plate, TopoPoly} from "./plate.js"
@@ -17,9 +16,14 @@ class Planetoid {
     // Earth incident radiation from Sol == 1
     this._insolation = insolation
     this._orbitalRadius = orbitalRadius
+
+    this._rotate = 1
   }
   get galaxy() {
     return this.app.galaxy
+  }
+  get system() {
+    return this.what == "Planet" ? this.parent : this.parent.parent
   }
   get ellipse() {
     return [0, 0, this._orbitalRadius, this._minorAxis]
@@ -32,9 +36,13 @@ class Planetoid {
     detail.insolation = this.insolation.toFixed(2);
     detail.blackbodyK = blackbody(this.insolation);
   }
+  get shortName() {
+    let S = this.system
+    return `${this.what == "Planet" ? _.romanNumeral(this.i) : _.romanNumeral(this.parent.i) + ", " + _.suffix((this.i + 1)) + " Moon"}`
+  }
   get name() {
     let S = this.what == "Planet" ? this.parent : this.parent.parent
-    return `${S.name} ${this.what == "Planet" ? this.i.romanNumeral() : this.parent.i.romanNumeral() + ", " + (this.i + 1).suffix() + " Moon"}`
+    return `${S.name} ${this.what == "Planet" ? _.romanNumeral(this.i) : _.romanNumeral(this.parent.i) + ", " + _.suffix((this.i + 1)) + " Moon"}`
   }
   get info() {
     let {classification, _orbitalRadius, gravity, description, atmosphere, temp} = this
@@ -44,6 +52,15 @@ class Planetoid {
   get cssClass() {
     let _type = this.classification
     return _type == "gas giant" ? "gasGiant" : this.HI == 1 ? "earthlike" : _type
+  }
+  /*
+    Favorites 
+  */
+  get isFavorite() {
+    return this.system._favorites.includes(this.seed)
+  }
+  manageFavorites() {
+    this.system.manageFavorites(this.seed)
   }
   /*
     Topograpy 
@@ -72,7 +89,7 @@ class Planetoid {
     let RNG = new Chance(this.seed)
 
     //create a plate 
-    let createPlate = ()=>t.plates.push(new Plate(this,t.plates.length,RandBetween(56, 750, RNG) / 1000));
+    let createPlate = ()=>t.plates.push(new Plate(this,t.plates.length,RNG.randBetween(56, 750) / 1000));
 
     //group plates 
     let remain = d3.range(pD.polygons.length).map(i=>i)
@@ -118,14 +135,14 @@ class Planetoid {
       topo.polygons().features.forEach((poly,i)=>{
         let site = poly.properties.site.coordinates
         let pi = t.pids[pD.find(...site)]
-        t.polys.push(new TopoPoly(t.plates[pi],poly,i,(RandBetween(0, 100, RNG) - 50) / 1000))
+        t.polys.push(new TopoPoly(t.plates[pi],poly,i,(RNG.randBetween(0, 100) - 50) / 1000))
       }
       )
 
       //also create mountain ranges 
-      RNG.shuffle(t.plates).slice(0, 10 + SumDice("2d6", RNG)).forEach(p=>{
+      RNG.shuffle(t.plates).slice(0, 10 + RNG.sumDice("2d6")).forEach(p=>{
         //mountain range height
-        let me = RandBetween(200, 550, RNG) / 1000
+        let me = RNG.randBetween(200, 550) / 1000
         //border 
         let bi = RNG.pickone(Object.keys(p.borders))
         let border = p.borders[bi]
@@ -154,7 +171,8 @@ class Planetoid {
         t.polys.push(Object.assign({}, poly, {
           i,
           pi,
-          e: 0.5
+          e: 0.5,
+          color: "brown"
         }))
       }
       )
@@ -174,6 +192,7 @@ class Planetoid {
     let {projection, path} = this.galaxy.voronoi
 
     let Rotate = (val)=>{
+      this._rotate = val
       projection.rotate([val, 0]);
       d3.select("svg").selectAll('path').attr('d', path);
     }
@@ -181,7 +200,7 @@ class Planetoid {
     return html`
     <div class='flex'>
       <span class="mh1">Rotate</span>
-      <input class="w-100 slider" type="range" min="1" max="360" value="1" onChange="${(e)=>Rotate(Number(e.target.value))}"></input>
+      <input class="w-100 slider" type="range" min="1" max="360" value="${this._rotate}" onChange="${(e)=>Rotate(Number(e.target.value))}"></input>
       <span class="mh1"></span>
     </div>`
   }
@@ -195,7 +214,7 @@ class Planetoid {
     <div class="bg-white br2 pa2">
       <div class="flex items-center justify-between">
         <span class="f4">${this.name}</span> 
-        <div class="tc b pointer dim bg-light-green br2 pa2" onClick=${()=>this.app.updateState("show", "Galaxy", G._show = "Planet", G.planet = this, G._option = [])}>View</div>
+        <div class="tc b pointer dim bg-light-green br2 pa2" onClick=${()=>G.show = this}>View</div>
       </div>
       <div class="i">${this.info}</div>
     </div>`
@@ -247,6 +266,43 @@ class Planetoid {
     svg.attr('viewBox', [0, y, x + width + 10, height + 10].join(" "))
     console.timeEnd('Planet Draw')
   }
+  /*
+    UI 
+  */
+  /*
+    UI 
+  */
+  get UI() {
+    let {app, parent, system, galaxy} = this
+    let MS = galaxy.MajorSector
+    let S = galaxy.System
+    const {html} = app
+
+    const linkCSS = "b pointer underline-hover hover-blue flex mh1"
+    const header = html`
+	<div>
+      <div class="flex items-center">
+        <span class="${linkCSS}" onClick=${()=>galaxy.show = galaxy}>Galaxy</span>::
+		<span class="${linkCSS}" onClick=${()=>galaxy.show = MS}>Sector [${MS.id.join()}]</span>
+      </div>
+      <div class="flex items-center">
+        <span class="${linkCSS}" onClick=${()=>galaxy.show = S}>${S.name}</span>
+        <span class="${linkCSS}" onClick=${()=>galaxy.show = this}>${this.shortName}</span>
+        <div class="f3 gray pointer favorite ${this.isFavorite ? "selected" : ""}" onClick=${()=>app.refresh(this.manageFavorites())}>★</div>
+      </div>
+	  ${this.slider}
+	</div>`
+
+    const left = html``
+
+    const right = html``
+
+    return {
+      header,
+      left,
+      right
+    }
+  }
 }
 
 class Moon extends Planetoid {
@@ -263,7 +319,7 @@ class Moon extends Planetoid {
     //orbit 
     let a = this._orbitalRadius
     let _e = RNG.weighted(['200.800', '5.200'], [1, 3])
-    let e = this._eccentricity = RandBetween(..._e.split(".").map(Number), RNG) / 1000
+    let e = this._eccentricity = RNG.randBetween(..._e.split(".").map(Number)) / 1000
     let b = this._minorAxis = Math.sqrt(a * a * (1 - e * e))
 
     //planet template 
@@ -298,7 +354,7 @@ class Planet extends Planetoid {
 
     let a = this._orbitalRadius
     let _e = RNG.weighted(['200.800', '5.200'], [1, 3])
-    let e = this._eccentricity = RandBetween(..._e.split(".").map(Number), RNG) / 1000
+    let e = this._eccentricity = RNG.randBetween(..._e.split(".").map(Number)) / 1000
     let b = this._minorAxis = Math.sqrt(a * a * (1 - e * e))
 
     //planet template 
@@ -329,20 +385,20 @@ class Planet extends Planetoid {
 
     //moons 
     let nMajor = _type == "rocky" ? RNG.pickone([0, 0, 1, 2]) : 1 + RNG.d4()
-    let nMinor = _type == "rocky" ? RNG.pickone([0, 0, 1, 2]) : SumDice("2d6", RNG)
+    let nMinor = _type == "rocky" ? RNG.pickone([0, 0, 1, 2]) : RNG.sumDice("2d6")
     let radius_min = 0.4 * RNG.range(0.5, 2)
       , radius_max = 50 * RNG.range(0.5, 2)
       , total_weight = (Math.pow(nMajor + nMinor, 2) + nMajor + nMinor) * 0.5
       , pr = radius_min;
 
     this._moons = []
-    BuildArray(nMajor, ()=>{
+    _.fromN(nMajor, ()=>{
       let ni = this._moons.length
       pr += ni / total_weight * RNG.range(0.5, 1) * (radius_max - radius_min);
       this._moons.push(new Moon(this,pr,insolation,false))
     }
     )
-    BuildArray(nMinor, ()=>{
+    _.fromN(nMinor, ()=>{
       let ni = this._moons.length
       pr += ni / total_weight * RNG.range(0.5, 1) * (radius_max - radius_min);
       this._moons.push(new Moon(this,pr,insolation,true))
@@ -352,11 +408,11 @@ class Planet extends Planetoid {
     return this;
   }
   get moonHI() {
-    return BuildArray(4, (_,i)=>this._moons.filter(m=>m.HI == i + 1))
+    return _.fromN(4, (i)=>this._moons.filter(m=>m.HI == i + 1))
   }
   get svgPad() {
     let _r = this.radius / 1000 < 3 ? 3 : this.radius / 1000
-    
+
     return this._moons.reduce((s,m,j)=>{
       let pad = 10
       let _mr = m.radius / 1000 < 3 ? 3 : m.radius / 1000
@@ -366,8 +422,8 @@ class Planet extends Planetoid {
     , [])
   }
   //svg for system display
-  svg(svg,pG) { 
-    let p = this 
+  svg(svg, pG) {
+    let p = this
     //make a gradient for gass giants 
     let makeGradient = ()=>{
       return svg.gradient('linear', function(add) {
@@ -376,22 +432,22 @@ class Planet extends Planetoid {
     }
 
     //data for svg display 
-    let pad = this.parent.svgPad.find(_pad=>_pad[0]==this.i)[1]
+    let pad = this.parent.svgPad.find(_pad=>_pad[0] == this.i)[1]
     let _r = this.radius / 1000 < 3 ? 3 : this.radius / 1000
-    let cx = pad - _r 
-    
+    let cx = pad - _r
+
     let psvg = svg.circle(2 * _r).attr({
       cx,
       cy: 0
     }).addClass('planet').addClass(this.cssClass).fill(this.cssClass == "gasGiant" ? makeGradient() : this.color).data({
-      i : this.i 
+      i: this.i
     }).click(()=>p.onClick())
     //add to group 
     pG.add(psvg)
 
     let mPad = this.svgPad
     this._moons.forEach((m,i)=>{
-      let _mr = m.radius / 1000 < 3 ? 3 : m.radius / 1000 
+      let _mr = m.radius / 1000 < 3 ? 3 : m.radius / 1000
 
       let moon = svg.circle(2 * _mr).attr({
         cx,

@@ -1,4 +1,3 @@
-import {RandBetween, SumDice, Likely, BuildArray} from '../random.js'
 import {GasGiantColors, RockyColors, TerrainColors} from "../data.js"
 /*
   Plates and Topograpy
@@ -85,7 +84,7 @@ class TopoPoly {
     let[long,lat] = properties.sitecoordinates
     let {HI, color, temp} = planet
 
-    let _e = e.clamp(0, 0.99)
+    let _e = _.clamp(e,0, 0.99)
 
     //mountain
     if (_e > 0.5 && !isWater) {

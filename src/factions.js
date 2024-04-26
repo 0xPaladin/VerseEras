@@ -1,4 +1,4 @@
-import {RandBetween, SumDice, Likely, BuildArray, WeightedString} from './random.js'
+import {MakeName} from './random_name.js';
 import {RandomPeople} from './people.js';
 import*as Data from './data.js';
 
@@ -8,7 +8,7 @@ import*as Data from './data.js';
 const Ancients = ['Crysik', 'Cthulhi', 'Deep Dwellers', 'Dholes', 'Elder Things', 'Hydra', 'Mi-go', 'Morkoth', 'Neh-thalggu', 'Rhukothi', 'Shk-mar', 'Shoggoth', 'Space Polyps', 'Worms', 'Xsur', 'Yellow Court', 'Yith']
 
 const CreateAncient = (RNG)=>{
-  let type = RNG.shuffle(['air', 'earth', 'water', 'air', 'earth', 'water']).slice(0, 2).map(t=>RNG.pickone(RNG.pickone(Data.Animals[t]).split("/")).capitalize()).join("/");
+  let type = RNG.shuffle(['air', 'earth', 'water', 'air', 'earth', 'water']).slice(0, 2).map(t=>_.capitalize(RNG.pickone(RNG.pickone(Data.Animals[t]).split("/")))).join("/");
 
   return {
     form: 'Ancient',
@@ -24,46 +24,9 @@ const CreateAncient = (RNG)=>{
   Broken int t: threats, n: neutrals, a: allies
 */
 
-const Heralds = {
-  t: ['Crysik', 'Cthulhi', 'Deep Dwellers', 'Dholes', 'Elder Things', 'Hydra', 'Mi-go', 'Morkoth', 'Neh-thalggu', 'Rhukothi', 'Shk-mar', 'Space Polyps', 'Worms', 'Yellow Court', 'Yith'],
-  n: ['Ikarya', 'Xsur', 'Shoggoth', 'Independents*'],
-  a: ['Solars', 'The Free']
-}
-const Frontier = {
-  t: ['Crysik', 'Cthulhi', 'Deep Dwellers', 'Dholes', 'Elder Things', 'Hydra', 'Mi-go', 'Morkoth', 'Neh-thalggu', 'Rhukothi', 'Shk-mar', 'Space Polyps', 'Worms', 'Yellow Court', 'Yith'],
-  n: ['Gemeli', 'Crysik', 'Ikarya', 'Shoggoth', 'People', 'People', 'People'],
-  a: ['People']
-}
-const Firewall = {
-  t: ['Barren', 'Lyns', 'Reapers', 'Barren', 'Lyns', 'Reapers', 'Barren', 'Lyns', 'Reapers'],
-  n: ['Gemeli', 'Ikarya', 'People', 'People', 'People'],
-  a: ['People']
-}
-const ExFrame = {
-  t: ['Barren', 'Lyns', 'Reapers', 'Barren', 'Lyns', 'Reapers', 'Deep Dwellers', 'Hegemony', 'Worms'],
-  n: ['Gemeli', 'Ikarya', 'Independents', 'Independents', 'Alari', 'Independents', 'Alari'],
-  a: ['Free Union']
-}
-const Wanderer = {
-  t: ['Barren', 'Lyns', 'Reapers', 'Deep Dwellers', 'Dominion', 'Tyrants', 'Hegemony', 'Hordes', 'Myr', 'Syndicate', 'Worms'],
-  n: ['Gemeli', 'Ikarya', 'Cultivators', 'Myr', 'Red Dawn'],
-  a: ['Archons', 'Forge Worlds', "Guardians", 'Houses of the Sun', 'Protectorate', 'Free Union', 'Free Union', 'Free Union']
-}
-
-const ERAS = {
-  Heralds,
-  Frontier,
-  Firewall,
-  ExFrame,
-  Wanderer
-}
-
 const TEMPLATES = {
   Ancient: {
     gen: CreateAncient
-  },
-  'Independents*': {
-    gen: RandomPeople
   },
   'The Free': {
     gen: RandomPeople
@@ -109,18 +72,27 @@ class Faction {
 
     let RNG = new Chance([this.seed, "Faction", this.id].join("."))
 
+    let t = this.tier = opts.tier || 1 
+    let color = RNG.pickone(Data.GasGiantColors) 
+    this.color = opts.color ? opts.color : color
+
+    //set stats and goals 
+    this._stats = RNG.shuffle(t == 1 ? [1,1,0] : t == 2 ? [2,1,0] : [t,RNG.shuffle([t-1,t-2,t-2,t-3])].flat()).slice(0,3) 
+
     //lifeform and people 
     let people = opts.people ? opts.people : PeopleByEra(RNG, opts)
     //get template 
     let template = TEMPLATES[people] || {}
-    this.people = template.gen ? template.gen(RNG) : people
+    this.people = people
+    if(template.gen) {
+      this._name = _.capitalize(RNG.word()) 
+      this._people = template.gen(RNG) 
+    }
 
     let type = this._eraType
     //['Evil', 'Chaotic', 'Neutral', 'Lawful', 'Good']
     this.alignment = type == "t" ? RNG.pickone(['Evil', 'Chaotic']) : type == "n" ? RNG.weighted(['Chaotic', 'Neutral', 'Lawful'], [1, 4, 1]) : RNG.pickone(['Lawful', 'Good'])
 
-    this.economy = RNG.weighted(ECONOMY, [1, 2, 6, 2, 1])
-    this.military = RNG.weighted(MILITARY, [1, 2, 6, 2, 1])
     this.populace = RNG.weighted(POPULACE, [1, 2, 6, 2, 1])
 
     this.values = RNG.shuffle(VALUES[this.alignment].split(",")).slice(0, 2).map(v=>{
@@ -135,19 +107,31 @@ class Faction {
     this.type = RNG.pickone(FACTIONTYPES)
 
     //create the standard people of the region 
-    this.thralls = type == 't' ? BuildArray(3, ()=>RandomPeople(RNG)) : []
+    this.thralls = type == 't' ? _.fromN(3, ()=>RandomPeople(RNG)) : []
 
     this._ob = RNG.bool()
 
-    //for faction add systems - max will be 30 : id, type, center of gravity, r, theta
-    this._systems = BuildArray(50, (_,i)=>[1000000 + i + (this.id * 500), RNG.pickone(["Settlement", "Site"]), RNG.random(), Math.sqrt(RNG.random()), RNG.random() * 2 * Math.PI, RandBetween(1, 1000, RNG)])
-    this._systems.forEach(s=>s[1] = s[1] == "Settlement" ? WeightedString(this.settlementTypes, RNG) : RNG.weighted(['Outpost', 'Resource', 'Gate', 'Infrastructure'], [2, 2, 1, 1]))
+    //names 
+    let _names = []
+    //for faction add systems - max will be 30 : id, type, center of gravity, r, theta, z, d100, name
+    this._systems = _.fromN(50, (i)=>[1000000 + i + (this.id * 500), RNG.pickone(["Settlement", "Site"]), RNG.random(), Math.sqrt(RNG.random()), RNG.random() * 2 * Math.PI, RNG.randBetween(1, 1000),RNG.d100(),MakeName(_names,RNG)])
+    this._systems.forEach(s=>s[1] = s[1] == "Settlement" ? RNG.weightedString(this.settlementTypes) : RNG.weighted(['Outpost', 'Resource', 'Gate', 'Infrastructure'], [2, 2, 1, 1]))
+  }
+  get app () {
+    return this.parent.app
   }
   get name() {
-    return this.people.type ? this.people.type : this.people
+    return this._name ? `${this._name}${['Ancient','The Free'].includes(this.people) ? ` [${this.people}]` : ""}` : this.people
   }
   get about() {
-    return [this.alignment.toLowerCase(), "$ " + this.economy, "⚔ " + this.military, "☺ " + this.populace]
+    let s = this.stats 
+    return [this.alignment.toLowerCase(), "$ " + ECONOMY[s.Wealth], "⚔ " + MILITARY[s.Force], "☺ " + this.populace]
+  }
+  get stats () {
+    return _.fromEntries(["Force","Cunning","Wealth"].map((s,i)=>[s,this._stats[i]]))
+  }
+  get mayAttack () {
+    return this.isAI || this.isAncient || ['Dominion', 'Tyrants', 'Hegemony', 'Hordes', 'Myr', 'Syndicate', 'Worms'].includes(this.people)
   }
   get settlementTypes() {
     if (['Ikarya', 'Hordes'].includes(this.people))
@@ -155,29 +139,29 @@ class Faction {
     if (['Tyrants', 'Red Dawn'].includes(this.people))
       return "Orbital,Planet/1,1";
     if (this.people == 'Gemeli')
-      return "Orbital,Moon,Asteroid/2,1,1";
+      return "Plabet,Moon,Space/1,2,4";
     if (this.people == 'Lyns')
-      return "Planet,Asteroid/3,1";
+      return "Planet,Space/3,1";
     if (this.isProtoAncient)
       return "Orbital,Planet,Moon/3,3,1";
     if (this.isAncient)
-      return "Planet,Moon,Asteroid/3,1,1";
+      return "Planet,Moon,Space/3,1,1";
     if (this.isAI || ['Hegemony', 'Syndicate', 'Myr'].includes(this.people))
-      return "Moon,Asteroid/1,1";
+      return "Moon,Space/1,1";
     if (["Heralds", "Frontier"].includes(this.era))
-      return "Planet,Moon,Asteroid/3,1,1";
+      return "Planet,Moon,Space/3,1,1";
     if (this.era == "Firewall")
       return "Orbital,Planet,Moon/4,1,1";
     if (this.era == "ExFrame")
-      return "Moon,Asteroid/1,3"
+      return "Moon,Space/1,3"
     if (this.era == "Wanderer")
-      return "Orbital,Asteroid/4,1";
+      return "Orbital,Space/4,1";
   }
   get isAI() {
     return ['Barren', 'Lyns', 'Reapers'].includes(this.people)
   }
   get isProtoAncient() {
-    return this.people.form ? this.people.form == "Ancient" : false
+    return this.people == "Ancient"
   }
   get isAncient() {
     return Ancients.includes(this.people)
@@ -189,22 +173,28 @@ class Faction {
       t: "Threat"
     }[this._eraType]
   }
+  initialize (RNG) {
+    this.setGoals(RNG)
+  }
   setGoals(RNG) {
-    const GOALS = ['Oppose', 'Hunt', 'Spy On/Sabotage/Infiltrate', 'Hold Territory', 'Expand Territory', 'Establish Outpost', 'Exploit', 'Maintain Trade', 'Seek Knowledge']
+    let t = this._eraType
+    const GOALS = ['Oppose', 'Spy On/Sabotage/Infiltrate', 'Hold Territory', 'Expand Territory', 'Establish Outpost', 'Exploit Resources', 'Maintain Trade', 'Seek Knowledge']
+    //Hunt 
+    
     this.goals = RNG.shuffle(GOALS).slice(0, 2).map(g=>{
-      let what = null
+      let hasT = ['Oppose', 'Spy On/Sabotage/Infiltrate'].includes(g)
+      g = RNG.pickone(g.split("/"))
 
-      if (['Oppose', 'Spy On/Sabotage'].includes(g)) {
-        g = RNG.pickone(g.split("/"))
-        //what = RNG.pickone(foes.map(f=>f.people))
-      } else if (g == 'Exploit') {//what = RNG.pickone(resources)
-      } else if (g == 'Hunt') {//what = R.ancient.people == this.people ? RNG.pickone(_creatures.filter(c=> ["wild","sport"].includes(c.purpose)).map(c=>c.data.type)) : RNG.pickone(_creatures.map(c=>c.data.type))
-      }
+      let targets = t == "t" ? this.parent.factionsByEra[this.era].filter(f=>f.seed!=this.seed) : this.parent.factionsByEra[this.era].filter(f=>f._eraType=="t")
+      let target = RNG.pickone(targets)
+
+      let short = g+(hasT?` [${target.name}]`:"")
 
       return {
         goal: g,
         clock: RNG.pickone([8, 10, 12]),
-        what
+        target,
+        short
       }
     }
     )
@@ -265,7 +255,7 @@ class Faction {
       let f = de == 0 ? this : altFaction 
       let isCore = i < nc
 
-      //id, type, center of gravity, r, theta
+      //id, type, center of gravity, r, theta, z, d100, name
       return {
         _i : i,
         f: f,
@@ -273,13 +263,65 @@ class Faction {
         ei: fei,
         isCore,
         i: s[0],
+        d100: s[6],
+        name : s[7],
         sid,
         type: isCore? this.settlementTypes.split("/")[0].split(",")[0] : s[1],
-        p: [Math.round(x), Math.round(y),z]
+        p: [Math.round(x), Math.round(y),z],
+        get sector () {
+          return this.creator.parent._sectors.get(this.sid.join())
+        },
+        get system () {
+          return this.sector.systems.find(s=>s.id==this.i)
+        }
       }
     }
     )
   }
+  /*
+  UI
+  */
+  get UI () {
+    const {html} = this.app
+    let {name,_eraType,eraType,tier,about,values,style,tech,claims,goals=[]} = this 
+
+    let color = _eraType == "t" ? "red" : _eraType == "n" ? "blue" : "green"
+
+    const button = html`
+    <div class="tc pointer dim bg-white flex items-center justify-between db ba br2 ma1 pa2" onClick=${()=>this.app.updateState("dialog","GalaxyFactionUI",this.parent.Faction = this)}>
+      <div>
+        <div class="d-circle-sm mh1" style="background:${this.color}"></div>
+        ${name}
+      </div>
+      <div class="flex items-center">
+        ${_.romanNumeral(tier-1)}
+        <div class="d-circle-sm bg-${color} mh1" ></div>
+      </div>
+    </div>
+    `
+
+    const dialog = html`
+    <div style="width: 26rem;">
+      <h3 class="flex items-center justify-between mb0 mt2">
+        ${name} 
+        <span>[<span class="pointer dim underline-hover hover-orange" onClick=${()=>this.app.dialog = ""}>X</span>]</span>
+      </h3>
+      <div class="w-100">
+        <div class="i mb1">${eraType}, ${about.join(", ")}</div>
+        <div class="ph2">
+  		  <div><b>Values:</b> ${values.join("/")}</div>
+  		  <div><b>Tech:</b> ${style} ${tech}</div>
+  	      <div class="flex"><b>Sectors:</b> ${claims.map(c=>html`<div class="pointer underline-hover hover-blue mh1">[${c.sid.join()}]</div>`)}</div>
+  	      <div class="flex ${goals.length == 0 ? "dn-ns" : ""}">
+  	        <span class="b">Goals: </span>
+  			<div class="mh2">${goals.map(g=>html`<div>${g.short} [${g.clock}]</div>`)}</div>
+  	      </div>
+  	  </div>
+      </div>
+    </div>`
+
+    return {button,dialog}
+  }
 }
 
-export {Ancients, ERAS as EraFactions, Faction}
+export {Ancients, Faction}

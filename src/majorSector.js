@@ -1,7 +1,6 @@
-import {RandBetween, SumDice, Likely, BuildArray} from './random.js'
+import {MakeName} from './random_name.js';
 
-import {random_name, isBadWord} from './random_name.js';
-
+import {StarsInSector} from './starryHost.js';
 import {System} from './starSystem.js';
 
 import {CreatePOI} from './poi.js';
@@ -31,8 +30,10 @@ const MAJORSECTOR = 5000
 // sector size in LY 
 
 class MajorSector {
-  constructor(app, G={}, id=[3, 6]) {
-    this.app = app
+  constructor(G, id=[3, 6]) {
+    this.what = "MajorSector"
+    this.filter = "All"
+
     this.galaxy = G
 
     this._seed = G.seed || chance.natural()
@@ -47,39 +48,34 @@ class MajorSector {
     let alignment = this.alignment = FA.length > 0 ? RNG.pickone(FA) : ['Heralds', 'ExFrame'].includes(G._era) ? RNG.pickone(['chaotic', 'evil']) : "neutral"
     let alMod = [5, 3, 0, -3, -5][['chaotic', 'evil', 'neutral', 'good', 'lawful'].indexOf(alignment)]
     let sR = RNG.d12() + alMod
-    let safety = this.safety = sR <= 1 ? ["safe", 3] : sR <= 3 ? ["unsafe", 2] : sR <= 9 ? ["dangerous", 1] : ["perilous", 0]
-
-    //function to create a random point in the sector
-    const PointInSector = ()=>[...BuildArray(2, (_,i)=>id[i] * MAJORSECTOR + RandBetween(1, 5000, RNG)), RandBetween(1, 1000, RNG)]
-
-    //make a name and reject badwords
+    this.safety = sR <= 1 ? ["safe", 3] : sR <= 3 ? ["unsafe", 2] : sR <= 9 ? ["dangerous", 1] : ["perilous", 0]
+  }
+  /*
+    app getters 
+  */
+  get app() {
+    return this.galaxy.app
+  }
+  /*
+    Functions 
+  */
+  refresh() {
+	let {safety} = this 
+	//keep names for no repeats 
     this._names = []
-    let makeName = ()=>{
-      var number_of_syllables = Math.floor(RNG.random() * 2 + 2), new_name;
-      //generate a unique name without badwords
-      while (true) {
-        new_name = random_name(RNG, number_of_syllables);
-        if (this._names.indexOf(new_name) >= 0 || isBadWord(new_name)) {} else {
-          break;
-        }
-      }
-      this._names.push(new_name)
-      return new_name
-    }
-
-    //systems 
+	  //systems 
     this._loc = []
     this._systems = []
-    //poi 
-    let _poi = (r)=>r <= 4 ? 'raiders' : r <= 6 ? 'hazard' : r == 7 ? 'obstacle' : r <= 12 ? 'site' : 'settlement'
+
+	//establish random gen 
+    let RNG = new Chance(this.seed)
+	  
     //number of systems 
     let ns = 333
     for (let i = 0; i < ns; i++) {
-      this._loc.push([...id.map((p)=>p * MAJORSECTOR + RandBetween(1, 5000, RNG)), RandBetween(1, 1000, RNG)])
-      makeName()
-
+      let _name = MakeName(this._names,RNG)
       //make and push to systems 
-      this._systems.push(new System(this,i))
+      this._systems.push(new System(this,{i,_name}))
     }
 
     //create faction sytems 
@@ -88,16 +84,11 @@ class MajorSector {
       //check for planet 
       let HI = s.type == "Planet" ? s.creator.isAncient || s.creator.isProtoAncient ? RNG.pickone([1, 2, 3]) : 1 : null
       //create system 
-      let S = new System(this,s.i,HI)
-      S._loc = s.p
-      S._name = makeName()
+      let S = new System(this,{i:s.i,HI,_name:s.name,loc:s.p})
       S.POI = [CreatePOI.faction(S, s, RNG)]
       return S
     }
     )
-
-    this.filter = "All"
-    console.log(this)
   }
   //add a system to the sector 
   addSystem(opts, RNG=chance) {
@@ -185,6 +176,9 @@ class MajorSector {
     let d = Math.sqrt(dx * dx + dy * dy)
     return d
   }
+	get StarsInSector () {
+		return StarsInSector(this.id)
+	}
   //check for same sector 
   isSameSector(x, y) {
     return this.id[0] == x && this.id[1] == y
@@ -208,7 +202,7 @@ class MajorSector {
     return this.galaxy.factions.filter(f=>f.claims.filter(c=>this.isSameSector(...c.sid)).length > 0)
   }
 
-  async display(opts={}) {
+  async display(opts={}) {  
     let app = this.app
     let svg = SVG('svg')
 
@@ -224,7 +218,7 @@ class MajorSector {
     let gridmap = svg.group().attr('id', 'gridmap')
     gridmap.back()
 
-    BuildArray(n, (_,i)=>BuildArray(n, (_,j)=>{
+    _.fromN(n, (i)=>_.fromN(n, (j)=>{
       let xyz = [[sx + i * grid, sy + j * grid, _z], [sx + i * grid + grid, sy + j * grid, _z], [sx + i * grid + grid, sy + j * grid + grid, _z], [sx + i * grid, sy + j * grid + grid, _z]].map(_xyz=>{
         let {x, y} = isometric ? toIsometric(..._xyz) : {
           x: _xyz[0],
@@ -264,7 +258,7 @@ class MajorSector {
         //build html to show 
         let html = sector.app.html
         let text = html`
-            <div class="f4 tc pointer dim bg-light-green br2 pa2 mb1"  onClick=${(e)=>G.followOption(G.system = s)}>View ${_s.name} System</div>
+            <div class="f4 tc pointer dim bg-light-green br2 pa2 mb1"  onClick=${(e)=>G.show = _s}>View ${_s.name} System</div>
             ${_POI.map(p=>html`<div class="f5 i ph2 mb2">${p.short}</div>`)}`
         app.refresh(G._option = [['setVisibleSystem', id], text])
       })
@@ -281,6 +275,60 @@ class MajorSector {
 
     //adjust viewbox to see sector 
     svg.attr('viewBox', [...this.id.map(p=>p * MAJORSECTOR), MAJORSECTOR, MAJORSECTOR].join(" "))
+  }
+  /*
+    UI
+  */
+  get UI() {
+    let {app, galaxy} = this
+    const {html} = app
+    let {showBars} = app.state
+
+    const systemFilters = ["All", "Earthlike", "Survivable", "Factions", "Settlements", "Ruins", "Gates", "Resources", "Outposts", "Dwellings", "Landmarks"]
+    let showSystems = this.showSystems(this.filter)
+
+    const SectorSystemUI = (s)=>html`
+    <div class="pointer flex items-center justify-between db ba br2 ma1 pa2" onClick=${()=>galaxy.show = s}>
+    	<div>${s.name}</div>
+    	<div>
+    		${s._planets.length}<div class="d-circle-sm"div class="d-circle-sm" style="background-color:${s.UIColor}"></div>
+    	</div>
+    </div>`
+
+    const SlideBarRight = html`<div class="db tc v-mid pointer dim ba br2 mh1 pa2 ${showBars[1] ? "" : "rotate-180"}" onClick=${()=>app.updateState("showBars", showBars, showBars[1] = !showBars[1])}>➤</div>`
+    const SlideBarLeft = html`<div class="db f4 tc v-mid pointer dim ba br2 mr1 pa2 ${showBars[0] ? "rotate-180" : ""}" onClick=${()=>app.updateState("showBars", showBars, showBars[0] = !showBars[0])}>➤</div>`
+
+	const linkCSS = "b pointer underline-hover hover-blue flex mh1"
+    const header = html`
+	<div class="flex">
+		<span class="${linkCSS}" onClick=${()=>galaxy.show = galaxy}>Galaxy</span>::
+		<span class="${linkCSS}" onClick=${()=>galaxy.show = this}>Sector [${this.id.join()}]</span>
+	</div>`
+
+    //filter 
+    const left = html`
+    ${galaxy._option.length == 0 ? "" : galaxy._option[1]}
+	<div class="flex" style="background-color: rgba(255,255,255,0.5);">
+		${SlideBarLeft}
+		<div class="dropdown" style="direction: ltr;">
+			<div class="f4 tc pointer dim underline-hover hover-blue db pa2 ba br2">System Filter: ${this.filter} [${showSystems.length}]</div>
+	        <div class="dropdown-content w-100 bg-white ba bw1 pa1">
+	    	    ${systemFilters.map(sf=>html`
+	    		<div class="link pointer underline-hover" onClick=${()=>app.refresh(this.filter=sf,galaxy.display())}>${sf}</div>`)}
+	    	</div>
+		</div>
+	</div>
+	<div class="${showBars[0] ? "" : "dn-ns"}">
+		<div class="vh-75 overflow-x-hidden overflow-auto">${showSystems.map(s=>SectorSystemUI(s))}</div>
+	</div>`
+
+    const right = html``
+
+    return {
+      header,
+      left,
+      right
+    }
   }
 }
 
@@ -331,6 +379,7 @@ const History = ()=>{
     }
   }
   )
+
 }
 
 export {MajorSector}

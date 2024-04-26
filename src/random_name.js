@@ -34,12 +34,12 @@ function random_name(PRNG, number_of_syllables, allow_second_name, allow_seconda
   switch (suffix) {
   case 'first-name':
     if (allow_second_name !== false) {
-      name = random_name(PRNG, PRNG.integer({min:2,max:number_of_syllables}), false, false).capitalize() + " " + name;
+      name = _.capitalize(random_name(PRNG, PRNG.randBetween(2,number_of_syllables), false, false)) + " " + name;
     }
     break;
   case 'second-name':
     if (allow_second_name !== false) {
-      name = name + " " + random_name(PRNG, PRNG.integer({min:2,max:number_of_syllables}), false).capitalize();
+      name = name + " " + _.capitalize(random_name(PRNG, PRNG.randBetween(2,number_of_syllables), false));
     }
     break;
   case 'secondary':
@@ -48,7 +48,20 @@ function random_name(PRNG, number_of_syllables, allow_second_name, allow_seconda
     }
     break;
   }
-  return name.capitalize();
+  return _.capitalize(name);
 }
 
-export {random_name, badwords, isBadWord, };
+let MakeName = (_names,RNG=chance)=>{
+  var number_of_syllables = Math.floor(RNG.random() * 2 + 2), new_name;
+  //generate a unique name without badwords
+  while (true) {
+    new_name = random_name(RNG, number_of_syllables);
+    if (_names.indexOf(new_name) >= 0 || isBadWord(new_name)) {} else {
+      break;
+    }
+  }
+  _names.push(new_name)
+  return new_name
+}
+
+export {MakeName};

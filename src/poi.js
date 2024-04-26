@@ -1,5 +1,3 @@
-import {RandBetween, SumDice, Likely, BuildArray} from './random.js'
-
 /*
   Feature generation 
 */
@@ -65,7 +63,7 @@ const CreatePOI = {
     //Pick something in space and place it in the system 
     let placeSpace = ()=>{
       let what = RNG.pickone(["Ship", "Wreck", "Asteroid", "Station"])
-      let p = RandBetween(5, 250, RNG) / 10
+      let p = RNG.randBetween(5, 250) / 10
 
       return {
         what,
@@ -81,7 +79,7 @@ const CreatePOI = {
     s.moons.length > 0 ? _places.push("Moon") : null
 
     let place = data.place = _place || RNG.pickone(_places)
-    let where = data.where = place == "Planet" ? RNG.pickone(s.planets) : place == "Moon" ? RNG.pickone(s.moons) : placeSpace()
+    let where = data.where = place == "Planet" ? RNG.pickone(s.planets) : place == "Moon" ? RNG.pickone(s.moons.length > 0 ? s.moons : s.planets) : placeSpace()
 
     let types = where.HI == 1 ? ["Settlement"] : ["Underground", "Dome", "Orbiting Station"]
     data.type = where.classification == "gas giant" ? RNG.pickone(["Cloud Station", "Orbiting Station"]) : place != "Space" ? RNG.pickone(types) : null
@@ -183,7 +181,7 @@ const CreatePOI = {
     let {type, state} = this.Outpost(s, RNG)
 
     //check for HI 
-    let HI = BuildArray(2, (_,i)=>s.planetHI[i].concat(s.moonHI[i]))
+    let HI = s.habitible
     let _where = this.Location(s, RNG)
     let where = HI[0].length > 0 ? RNG.pickone(HI[0]) : HI[1].length > 0 ? RNG.pickone(HI[1]) : _where
     where = !where.where ? {
@@ -218,11 +216,20 @@ const CreatePOI = {
 
     //Orbital,Planet,Moon,Asteroid
     //['Outpost', 'Resource', 'Gate', 'Infrastructure']
-    if ('Orbital,Planet,Moon,Asteroid'.includes(type)) {
+    if ('Planet,Moon,Space'.includes(type)) {
       data.type = "Settlement"
+      data.where = this.Location(s, RNG, type)
+      let HI = s.habitible
+      if(HI[0].length > 0 && type != "Space"){
+        data.where.where = RNG.pickone(HI[0])
+      }
+      else if(HI[1].length > 0 && type != "Space"){
+        data.where.where = RNG.pickone(HI[1])
+      }
+      data.what = data.where.where.what
     }
     if (type == 'Orbital') {
-      data.structure = RNG.weighted(["Orbital", "Shell World", "Gas Field", "Water Field", "Niven Ring", "Dyson Sphere"], [4, 2, 1, 1, 0.1, 0.1])
+      data.type = RNG.weighted(["Orbital", "Shell World", "Gas Field", "Water Field", "Niven Ring", "Dyson Sphere"], [4, 2, 1, 1, 0.1, 0.1])
       data.where = this.Location(s, RNG, "Space")
     }
     if (type == 'Outpost') {
@@ -233,6 +240,7 @@ const CreatePOI = {
       Object.assign(data, this.Resource(s, RNG))
     }
     if (type == 'Gate') {
+      data.type = "Gate"
       let _g = creator.gates.filter(g=>g._i != _i)
       data.destination = _g.length > 0 ? RNG.bool() ? _g : [RNG.pickone(_g)] : null
       data.where = this.Location(s, RNG)

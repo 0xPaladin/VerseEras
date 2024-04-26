@@ -1,19 +1,28 @@
+//https://andrewdcampbell.github.io/galaxy-sim/assets/cubemaps/BlueNebular_back.jpg
 //https://github.com/snorpey/circlepacker
 //import {CirclePacker} from '../lib/circlepacker.esm.min.js';
 
-import {RandBetween, SumDice, Likely, BuildArray} from './random.js'
+import {GasGiantColors} from './data.js';
 
-import {Faction, Ancients, EraFactions} from './factions.js';
+import {Game, GameTemplates} from './game/games.js';
+import {Character} from './game/characters.js';
 
-//import {Region} from './region.js';
+import {Faction, Ancients} from './factions.js';
+
+import {FillGalaxy, Sectors, Allowable, BBox} from './starryHost.js';
 import {MajorSector} from './majorSector.js';
+
+/*
+	Colors  for factions 
+*/
+const COLORS = ["maroon", "salmon", "pink", "tan", "olive", "goldenrod", "lime", "green", "teal", "aquamarine", "navy", "steelblue", "fuchsia", "purple"]
 
 /*
   Galaxy Dimensions 
 */
 const GALAXYWIDTH = 76900
 //ly
-const SECTOR = 50
+const SECTOR = 100
 const MAJORSECTOR = 5000
 //ly 
 
@@ -34,8 +43,8 @@ let NSECTOR = [MAXLY[0] / MAJORSECTOR, MAXLY[1] / MAJORSECTOR]
 /*
   Sector IDS
 */
-const SECTORIDS = BuildArray(NSECTOR[0], (_,j)=>BuildArray(NSECTOR[1], (_,k)=>[j, k])).flat()
-const BLANKSECTORS = ['0,14', '0,0', '0,1', '1,0', '2,0', '2,1', '3,1', '3,0', '4,0', '1,1', '10,14', '11,14', '12,14', '13,14', '13,13', '14,13', '14,11', '14,12', '16,0', '17,0', '18,0', '19,0', '20,0', '21,0', '20,1', '21,1', '21,2', '21,7', '21,8'].concat(BuildArray(7, (_,i)=>BuildArray(6, (_,j)=>[15 + i, 9 + j].join()))).flat()
+const SECTORIDS = _.fromN(NSECTOR[0], (j)=>_.fromN(NSECTOR[1], (k)=>[j, k])).flat()
+const BLANKSECTORS = ['0,14', '0,0', '0,1', '1,0', '2,0', '2,1', '3,1', '3,0', '4,0', '1,1', '10,14', '11,14', '12,14', '13,14', '13,13', '14,13', '14,11', '14,12', '16,0', '17,0', '18,0', '19,0', '20,0', '21,0', '20,1', '21,1', '21,2', '21,7', '21,8'].concat(_.fromN(7, (i)=>_.fromN(6, (j)=>[15 + i, 9 + j].join()))).flat()
 const CORESECTORS = ['7,6', '8,6', '9,6', '7,7', '8,7', '9,7', '7,8', '8,8', '9,8', '18,4', '19,4', '18,5', '19,5']
 const NOBLANKS = SECTORIDS.filter(sid=>!BLANKSECTORS.includes(sid.join()))
 const VIABLESECTORS = SECTORIDS.filter(_id=>{
@@ -52,7 +61,6 @@ const Neighboors = (x,y,free)=>{
   }
   )
 }
-
 const CORE = {
   large: [300, 640, 526],
   small: [160, 1624.5, 377.5],
@@ -60,224 +68,351 @@ const CORE = {
 const SMALLGALAXYWIDTH = GALAXY.small[0] * LYTOPIXEL
 
 /*
-  Bounding boxes for initial sector pick 
-  topx, topy, width, height
+	Voronoi for Planets 
 */
-const Bounds = {
-  start: [[254, 336, 282, 648], [591, 149, 645, 285], [1101, 494, 267, 337], [638, 866, 443, 276]]
-}
+const SetVoronoi = (G)=>{
+  let RNG = new Chance(G.seed)
 
-const COLORS = ["white", "maroon", "salmon", "pink", "tan", "olive", "goldenrod", "lime", "green", "teal", "aquamarine", "navy", "steelblue", "fuchsia", "purple"]
+  console.time('Voronoi')
+  var platePoints = {
+    type: "FeatureCollection",
+    features: d3.range(200).map(function() {
+      return {
+        type: "Point",
+        coordinates: [360 * RNG.random(), 90 * (RNG.random() - RNG.random())],
+        tris: []
+      }
+    })
+  }
+
+  var topoPoints = {
+    type: "FeatureCollection",
+    features: d3.range(5000).map(function() {
+      return {
+        type: "Point",
+        coordinates: [360 * RNG.random(), 90 * (RNG.random() - RNG.random())]
+      }
+    })
+  }
+
+  //geo voronoi 
+  let projection = d3.geoOrthographic()
+    , path = d3.geoPath().projection(projection);
+
+  G.voronoi = {
+    plates: d3.geoVoronoi()(platePoints),
+    topo: d3.geoVoronoi()(topoPoints),
+    projection,
+    path
+  }
+  console.timeEnd('Voronoi')
+  console.log(G)
+  G.display()
+}
 
 /*
-  Random Position 
+  Eras 
 */
-
-const RandomStart = ()=>{
-  let[x,y,w,h] = chance.pickone(Bounds.start)
-  let sx = chance.natural({
-    min: Math.floor(x * LYTOPIXEL / SECTOR),
-    max: Math.floor((x + w) * LYTOPIXEL / SECTOR)
-  })
-  let sy = chance.natural({
-    min: Math.floor(y * LYTOPIXEL / SECTOR),
-    max: Math.floor((y + h) * LYTOPIXEL / SECTOR)
-  })
-  return [sx, sy]
+const ERAS = ["PreHistory", "Heralds", "Frontier", "Firewall", "ExFrame", "Wanderer"]
+const ERAOPTIONS = {
+  "PreHistory": [],
+  "Heralds": ["Kindle a Flame"],
+  "Frontier": ["Launch a Ship"],
+  "Firewall": ["Assemble a Team"],
+  "ExFrame": ["Call a Ranger"],
+  "Wanderer": ["Assemble a Crew", "Establish an Enterprise"]
+}
+const ERAFACTIONS = {
+  Heralds: {
+    t: ['Crysik.1-6.1-3', 'Cthulhi.1-6.1-3', 'Deep Dwellers.1-6.1-3', 'Dholes.1-6.1-3', 'Elder Things.1-6.1-3', 'Hydra.1-6.1-3', 'Mi-go.1-6.1-3', 'Morkoth.1-6.1-3', 'Neh-thalggu.1-6.1-3', 'Rhukothi.1-6.1-3', 'Shk-mar.1-6.1-3', 'Space Polyps.1-6.1-3', 'Worms.1-6.1-3', 'Yellow Court.1-6.1-3', 'Yith.1-6.1-3'],
+    n: ['Ikarya.2-3.1-2', 'Xsur.3-4.1-3', 'Shoggoth.2.1-3', 'The Free.3-5.1'],
+    a: ['Solars.2.1-2', 'The Free.3-5.1']
+  },
+  Frontier: {
+    t: ['Crysik.1-2.1-2', 'Cthulhi.1-2.1-3', 'Deep Dwellers.1-2.1-3', 'Dholes.1-2.1-2', 'Elder Things.1-2.1-3', 'Hydra.1-2.1-2', 'Mi-go.1-2.1-2', 'Morkoth.1-2.1-2', 'Neh-thalggu.1-2.1-2', 'Rhukothi.1-2.1-2', 'Shk-mar.1-2.1-2', 'Space Polyps.1-2.1-2', 'Worms.1-2.1-2', 'Yellow Court.1-2.1-2', 'Yith.1-2.1-2'],
+    n: ['Gemeli.2-3.1-3', 'Crysik.1-2.1-2', 'Ikarya.2-3.1-2', 'Shoggoth.2.1-3', 'People.20.1-3', 'People.1.4'],
+    a: ['People.20.1-3', 'People.1.4']
+  },
+  Firewall: {
+    t: ['Barren.10-20.1', 'Lyns.10-20.1', 'Reapers.10-20.1'],
+    n: ['Gemeli.3-6.1-3', 'Ikarya.2-3.1-2', 'People.8.2-4'],
+    a: ['People.8.2-4']
+  },
+  ExFrame: {
+    t: ['Barren.3-8.1-3', 'Lyns.3-8.1-3', 'Reapers.3-8.1-3', 'Deep Dwellers.2-4.1-2', 'Hegemony.1-3.1-2', 'Worms.2-4.1-2'],
+    n: ['Gemeli.2-3.1-2', 'Ikarya.2-4.1-2', 'Alari.4-8.1-2', 'Independents.8-16.1'],
+    a: ['Free Union.10-15.1']
+  },
+  Wanderer: {
+    t: ['Barren.1-3.1-2', 'Lyns.1-3.1-2', 'Reapers.1-3.1-2', 'Deep Dwellers.1-3.1-2', 'Worms.1.1-2', 'Hegemony.1-3.1-2', 'Dominion.1.4', 'Tyrants.2-4.1-2', 'Hordes.2-4.1-2', 'Myr.2-4.1-3', 'Shadowsteel Syndicate.1.1-3', 'Rukhothi.1.1-2', 'The Circle.1.1-3', 'Clan Virin.1.1-2'],
+    n: ['Gemeli.1-3.1-2', 'Ikarya.1-3.1-2', 'Cultivators.2.2-4', 'Myr.1-3.1-2', 'Red Dawn.1.4'],
+    a: ['Archons.1-2,1-3', 'Forge Worlds.2-4.1-3', "Guardians.1.2", 'Houses of the Sun.1-3.1-3', 'Protectorate.1-3.2-3', 'Free Union.3.3']
+  }
 }
 
-const SectorInGalaxy = (AorB="A",RNG=chance)=>{
-  let max = (AorB == "A" ? GALAXYWIDTH : SMALLGALAXYWIDTH) / SECTOR
-  return [RandBetween(0, max, RNG), RandBetween(0, max, RNG)]
+/*
+	Factions 
+*/
+const EstablishFactions = (G,eras)=>{
+  let RNG = new Chance(G.seed + ".Factions")
+  let freeSectors = []
+
+  //result 
+  let res = []
+
+  //jitter function for position
+  const Jitter = ()=>_.fromN(2, ()=>RNG.randBetween(500, 2000))
+
+  //faction claimed sectors
+  //function to add a new sector 
+  const AddSector = (t)=>{
+
+    let n = [1, 1, 1, 1, 3][t] || 1
+    //get initial sector 
+    let _sids = n == 1 ? [freeSectors[0]] : [freeSectors[0], ...Neighboors(...freeSectors[0], freeSectors).slice(0, n - 1)]
+    //for each sid 
+    return _sids.map(sid=>{
+      let data = {
+        sid
+      }
+      //remove from free
+      if (t > 1) {
+        freeSectors.splice(freeSectors.map(fs=>fs.join()).indexOf(sid.join()), 1)
+      }
+      //which quad of sector 
+      let quad = RNG.shuffle([[0, 0], [1, 0], [1, 1], [0, 1]]).map(q=>Jitter().map((j,i)=>j + q[i] * MAJORSECTOR / 2))
+      //radius and point of center 
+      data.pr = _.fromN(t < 3 ? 1 : 2, (i)=>{
+        let radius = RNG.randBetween(...["10,50", "100,1000", "2000,3000", "2000,3500", "2000,3500"][t].split(",").map(Number))
+        //get point with jitter 
+        let p = quad[i].map((_p,j)=>sid[j] * MAJORSECTOR + _p)
+        return [...p, radius]
+      }
+      )
+      //push to sector
+      return data
+    }
+    )
+  }
+
+  const addFaction = (era,threat,people,tier,color)=>{
+    let id = res.length
+    let seed = [G.seed, 'Faction', id].join(".")
+
+    let F = new Faction(G,{
+      id,
+      seed,
+      era: [era, threat],
+      people,
+      tier,
+      color
+    })
+
+    //claim a number of sectors depending upon tier 
+    F.claims = AddSector(tier)
+
+    //done 
+    res.push(F)
+  }
+
+  //for every era
+  for (let e in eras) {
+    //reset sectors 
+    freeSectors = RNG.shuffle(G.allowableSectors)
+    //track colors for the era 
+    let _fc = {}
+    //for the ally, neutral, and threat arrays 
+    for (let ant in eras[e]) {
+      //the array of factions 
+      eras[e][ant].forEach(fd=>{
+        let[people,_n,_t] = fd.split(".")
+        let n = _n.includes("-") ? RNG.randBetween(..._n.split("-").map(Number)) : Number(_n)
+        //handle colors 
+        let color = _fc[people] = _fc[people] && people != "People" ? _fc[people] : RNG.pickone(GasGiantColors).name
+        //create a faction for each 
+        _.fromN(n, ()=>{
+          //tier
+          let tier = _t.includes("-") ? RNG.randBetween(..._t.split("-").map(Number)) : Number(_t)
+          addFaction(e, ant, people, tier, color)
+        }
+        )
+      }
+      )
+    }
+  }
+
+  //done 
+  return res
 }
 
 /*
   Galaxy Class 
 */
-const ERAS = ["PreHistory", "Heralds", "Frontier", "Firewall", "ExFrame", "Wanderer"]
-const ERAFACTIONS = {
-  "Heralds": [['n', 'a'], ['n', 'a'], ['n', 'a']],
-  "Frontier": [['t', 'n', 'n', 'a'], ['t', 'n', 'n', 'a'], ['t', 'n', 'a', 'a'], ['t', 'n']],
-  "Firewall": [['t', 't', 'n', 'a'], ['t', 'n', 'n', 'a'], ['t', 'n', 'a', 'a'], ['n', 'a']],
-  "ExFrame": [['t', 't', 'n', 'a'], ['t', 't', 'n', 'a'], ['t', 't', 'n', 'a'], ['t', 't']],
-  "Wanderer": [['t', 'n', 'n', 'a'], ['t', 't', 'n', 'a'], ['t', 'n', 'a', 'a'], ['n', 'a']]
-}
 class Galaxy {
   constructor(app, opts={}) {
-    this.opts = opts
-    this._favorites = opts.favorites || []
-
-    this.w = GALAXYWIDTH / SECTOR
-
     this.app = app
-    this.seed = this.opts.seed = opts.seed || chance.string({
-      alpha: true,
-      length: 10,
-      casing: 'upper'
-    })
-    let RNG = new Chance(this.seed)
+
+    //object info 
+    this.what = "Galaxy"
+    this.w = GALAXYWIDTH / SECTOR
 
     //eras 
     this.eraList = ERAS
     this._era = "Wanderer"
 
-    let freeSectors = RNG.shuffle(SECTORIDS)
-    this.colors = RNG.shuffle(COLORS)
+    //state 
+    let o = this.opts = opts
+    //seed for rng 
+    o.seed = opts.seed || chance.string({
+      alpha: true,
+      length: 10,
+      casing: 'upper'
+    })
+    //time keeping - era, period, seconds, days, years 
+    o.time = opts.time || ERAS.map(e=>[e, 30, [0, 0, 0]])
+    //state that is saved - may be updated by user 
+    o.favorites = opts.favorites || []
+    o.characters = opts.characters || []
+    o.games = opts.games || []
 
-    //function to add faction to specified array - sets position in galaxy 
-    this._factions = []
-    const addFaction = (F,e,t,c)=>{
-      //jitter function for position
-      const Jitter = ()=>BuildArray(2, ()=>RandBetween(500, 2000))
+    this._sectors = new Map()
 
-      //faction claimed sectors
-      //function to add a new sector 
-      const addSector = (n=1)=>{
-        //get initial sector 
-        let _sids = n == 1 ? [freeSectors[0]] : [freeSectors[0], ...Neighboors(...freeSectors[0], freeSectors).slice(0, n - 1)]
-        //for each sid 
-        return _sids.map(sid=>{
-          let data = {
-            sid
-          }
-          //remove from free
-          freeSectors.splice(freeSectors.map(fs=>fs.join()).indexOf(sid.join()), 1)
-          //which quad of sector 
-          let quad = RNG.shuffle([[0, 0], [1, 0], [1, 1], [0, 1]]).map(q=>Jitter().map((j,i)=>j + q[i] * MAJORSECTOR / 2))
-          //radius and point of center 
-          data.pr = BuildArray(t < 3 ? 1 : 2, (_,i)=>{
-            let radius = RandBetween(...["10,50", "100,1000", "2000,3000", "2000,3500", "2000,3500"][t].split(",").map(Number), RNG)
-            //get point with jitter 
-            let p = quad[i].map((_p,j)=>sid[j] * MAJORSECTOR + _p)
-            return [...p, radius]
-          }
-          )
-          //push to sector
-          return data
-        }
-        )
-      }
+    //start generation 
+    let RNG = new Chance(this.seed)
 
-      //claim a number of sectors depending upon tier 
-      let claims = addSector([1, 1, 1, 1, 3][t])
+    //Radius and twist 
+    let _R = RNG.randBetween(8, 12)
+    this._R = _R * 5000
+    this._twist = RNG.randBetween(30, 150)/10
 
-      //push data to factions 
-      this._factions.push(Object.assign(F, {
-        tier: t,
-        color: c,
-        claims
-      }))
+    //create star backdrop 
+    console.time('Starry Host')
+    FillGalaxy(this)
+    console.timeEnd('Starry Host')
 
-      return F.people
-    }
-
+    //Factions 
     console.time('Galaxy Factions')
-    //random ancients to populate the rest of the galaxy 
-    BuildArray(100, (_,id)=>{
-      addFaction(new Faction(this,{
-        id,
-        seed: [this.seed, 'Faction', id].join("."),
-        era: ['PreHistory', RNG.pickone(['t', 'n'])],
-        people: 'Ancient'
-      }), 'PreHistory', RNG.weighted([1, 2, 3, 4], [3, 2, 2, 1]), RNG.pickone(COLORS))
-    }
-    )
-
-    //reset sectors 
-    freeSectors = RNG.shuffle(VIABLESECTORS)
-    //add know Ancients to Heralds
-    Ancients.forEach((a,i)=>{
-      //get a color
-      let c = RNG.pickone(COLORS)
-      //number of times they will appear  
-      BuildArray(SumDice("2d4", RNG), ()=>{
-        let id = this._factions.length
-        let tier = RandBetween(1, 2, RNG)
-        addFaction(new Faction(this,{
-          id,
-          seed: [this.seed, 'Faction', id].join("."),
-          era: ['Heralds', 't'],
-          people: a
-        }), 'Heralds', tier, c)
-      }
-      )
-    }
-    )
-
-    let _wormholes = []
-    //now build factions for each era 
-    let Unlimited = ['Independents*', 'The Free', 'People', 'Free Union']
-    this.eraList.slice(1).forEach((e,ei)=>{
-      let ef = Object.fromEntries(Object.entries(EraFactions[e]).map(([key,f])=>[key, RNG.shuffle(f)]))
-      //reset sectors 
-      freeSectors = RNG.shuffle(VIABLESECTORS)
-      //get current faction array 
-      ERAFACTIONS[e].forEach((_ft,i)=>_ft.forEach(t=>{
-        let people = ef[t][0]
-        !Unlimited.includes(people) ? ef[t].splice(0, 1) : null
-
-        let id = this._factions.length
-        addFaction(new Faction(this,{
-          id,
-          seed: [this.seed, 'Faction', id].join("."),
-          era: [e, t],
-          people
-        }), e, i + 1, RNG.pickone(COLORS))
-      }
-      ))
-
-      //set goals 
-      this.factionsByEra[e].forEach(f=>f.setGoals(RNG))
-      //create wormholes 
-      let esids = RNG.shuffle(SECTORIDS)
-      BuildArray(SumDice("2d4", RNG), (_,j)=>_wormholes.push([e, ei + 1, ...esids.splice(0, 2)]))
-    }
-    )
+    this._factions = EstablishFactions(this, ERAFACTIONS)
+    this._factions.forEach(f=>f.initialize(RNG))
     console.timeEnd('Galaxy Factions')
-    this._wormholes = _wormholes
+
+    //wormholes for every era 
+    this._wormholes = this.eraList.slice(1).map((e,ei)=>{
+      let esids = RNG.shuffle(this.allowableSectors)
+      return _.fromN(RNG.sumDice("2d4"), ()=>[e, ei + 1, ...esids.splice(0, 2)])
+    }
+    ).flat()
 
     this._show = 'Galaxy'
     this._option = []
-    this.sectorFilter = "Favorites"
+    this._filter = "Factions"
 
     //pause for display and then create standard voronoi
-    setTimeout(()=>this.setVoronoi(), 3000)
+    setTimeout(()=>{
+      this.allSectors.forEach(id=>this._sectors.set(id.join(), new MajorSector(this,id)))
+    }
+    , 1000)
+
+    //pause for display and then create standard voronoi
+    setTimeout(()=>SetVoronoi(this), 2000)
   }
+  get seed() {
+    return this.opts.seed
+  }
+  get allowableSectors() {
+	  return Allowable//Sectors.map(sid=>sid.split(",").map(Number))
+  }
+  get allSectors() {
+    let _R = this._R / 5000
+    let AS = []
+    _.fromN(2 * _R, (i)=>_.fromN(2 * _R, (j)=>{
+      let dx = _R - i
+        , dy = _R - j
+        , d = dx * dx + dy * dy;
+      if (d <= _R * _R * 1.1) {
+        AS.push([i, j])
+      }
+    }
+    ))
+    return AS
+  }
+  /* active state 
+	*/
   set era(e) {
     this._era = e
-    return this.app.refresh()
-    // calls g.display in main 
+    this.app.refresh()
+    this.display()
   }
-  get era() {
-    return {
-      factions: this._factions.filter(f=>f.era == this._era)
-    }
+  get time() {
+    return this.opts.time.find(t=>t[0] == this._era).slice(1)
+  }
+  get active() {
+    return this._show == "Galaxy" ? this : this[this._show]
   }
   /*
-    Sector lists 
-  */
-  showSectors() {
-    let ei = this.eraList.indexOf(this._era)
-    let filter = this.sectorFilter
-    //SECTORIDS
-    let list = []
-    const addToList = (sid)=>{
-      list.includes(sid.join()) ? null : list.push(sid.join())
-    }
-    //["Favorites", "Historic Factions", "Orbitals", "Gates", "Wormholes"]
-    if (filter == "Favorites") {
-      this._favorites.forEach(f=>addToList(f[4]))
-    } else if (filter == "Historic Factions") {
-      this.pastFactions.forEach(f=>f.claims.forEach(c=>addToList(c.sid)))
-    } else if (filter == "Orbitals") {
-      this.orbitals.filter(o=>o.ei <= ei).forEach(o=>addToList(o.sid))
-    } else if (filter == "Gates") {
-      this.gates.filter(g=>g.ei <= ei).forEach(g=>addToList(g.sid))
-    } else if (filter == "Wormholes") {
-      this._wormholes.filter(w=>w[0] == this._era).forEach(w=>w.slice(2).map(sid=>addToList(sid)))
-    }
+		Games and Characters 
+	*/
+  newGame(type) {
+    let id = chance.natural()
+    //create state 
+    this.opts.games.push({
+      id,
+      type
+    })
 
-    return list.map(s=>s.split(",").map(Number)).sort((a,b)=>a[0] - b[0])
+    this.getGame(id).show()
+    this.save()
+  }
+  getGame(id) {
+    return new Game(this,this.opts.games.find(o=>o.id == id))
+  }
+  addCharacter(game) {
+    let id = chance.natural()
+    //create state 
+    this.opts.characters.push({
+      id,
+      game: game.id
+    })
+
+    this.getCharacter(id).show()
+    this.save()
+  }
+  getCharacter(id) {
+    return new Character(this,this.opts.characters.find(o=>o.id == id))
+  }
+  /*
+		Game functions 
+*/
+  //passage of time 
+  tick() {
+    let T = this.opts.time
+    //era, period, seconds, days, years 
+    let ti = T.map(t=>t[0]).indexOf(this._era)
+    let[period,tick] = T[ti].slice(1)
+    //clock timing 
+    tick[0]++
+    //check for day and year 
+    if (tick[0] == period) {
+      tick[1]++
+      tick[0] = 0
+    }
+    if (tick[1] == 365) {
+      tick[2]++
+      tick[1] = 0
+    }
+    T[ti] = [this._era, period, tick]
+    return tick
+  }
+  //random 
+  random(RNG=chance) {
+    let emptySector = ()=>{
+      let fs = this.factions.map(f=>f.claims.map(c=>c.sid.join())).flat()
+      let es = VIABLESECTORS.filter(sid=>!fs.includes(sid.join()))
+      return RNG.pickone(es)
+    }
+    return {
+      emptySector
+    }
   }
   /*
     Features of the galaxy 
@@ -288,12 +423,32 @@ class Galaxy {
   get gates() {
     return this.factionSystems.filter(s=>s.type == "Gate")
   }
+  //turn favorites into an object for display 
+  get favorites() {
+    return this.opts.favorites.filter(f=>f[4] == this._era).map(([seed,HI,sid,favs,era,name])=>{
+      return {
+        G: this,
+        name,
+        seed,
+        HI,
+        sid,
+        favs,
+        get sector() {
+          return this.G._sectors.get(this.sid.join())
+        },
+        get system() {
+          return this.sector.systems.find(s=>s.seed == this.seed)
+        }
+      }
+    }
+    )
+  }
   /*
     Get faction data 
   */
   get pastFactions() {
     let ei = this.eraList.indexOf(this._era)
-    return this._factions.filter(f=>this.eraList.indexOf(f.era) <= ei)
+    return this._factions.filter(f=>this.eraList.indexOf(f.era) < ei)
   }
   get factionsByEra() {
     return Object.fromEntries(this.eraList.map(e=>[e, this._factions.filter(f=>f.era == e)]))
@@ -308,47 +463,6 @@ class Galaxy {
     return this._factions.map(f=>f.systemsInSector()).flat()
   }
   /*
-    Voronoi 
-  */
-  setVoronoi() {
-    let RNG = new Chance(this.seed)
-    
-    console.time('Voronoi')
-    var platePoints = {
-      type: "FeatureCollection",
-      features: d3.range(200).map(function() {
-        return {
-          type: "Point",
-          coordinates: [360 * RNG.random(), 90 * (RNG.random() - RNG.random())],
-          tris: []
-        }
-      })
-    }
-
-    var topoPoints = {
-      type: "FeatureCollection",
-      features: d3.range(5000).map(function() {
-        return {
-          type: "Point",
-          coordinates: [360 * RNG.random(), 90 * (RNG.random() - RNG.random())]
-        }
-      })
-    }
-
-    //geo voronoi 
-    let projection = d3.geoOrthographic()
-      , path = d3.geoPath().projection(projection);
-    
-    this.voronoi = {
-      plates : d3.geoVoronoi()(platePoints),
-      topo : d3.geoVoronoi()(topoPoints),
-      projection,
-      path
-    }
-    console.timeEnd('Voronoi')
-    console.log(this)
-  }
-  /*
     Create a Region 
   */
   genRegion(seed=chance.natural(), opts={}) {
@@ -358,26 +472,9 @@ class Galaxy {
       sector
     })
   }
-  setMajorSector(sid, show=false) {
-    this.majorSector = new MajorSector(this.app,this,sid)
-  }
-  //follow the selected option based upon user selection 
-  followOption() {
-    let[f,opts] = this._option[0]
-    //run function 
-    this[f] ? this[f](opts) : null
-
-    if (f == 'setMajorSector') {
-      this._option = []
-      this.display('Sector')
-    }
-    if (f == 'setVisibleSystem') {
-      this._option = []
-      this.display('System')
-    }
-
-    this.app.refresh()
-  }
+  /*
+	SVG
+*/
   display(what=this._show) {
     if (SVG('svg')) {
       SVG.find('svg').remove()
@@ -385,9 +482,6 @@ class Galaxy {
 
     let mapBBox = document.querySelector("#map").getBoundingClientRect()
     let minD = mapBBox.height < mapBBox.width ? ["h", mapBBox.height] : ["w", mapBBox.width]
-    //let gImg = minD[0] == "h" ? [minD[1], ] : [2000 * 800 / 1373.4, 800] //[2000,1373.4]
-    let svgSize = [mapBBox.width, mapBBox.height]
-    //what == "Galaxy" ? gImg : [minD[1], minD[1]]
 
     let G = this
     let app = this.app
@@ -421,7 +515,7 @@ class Galaxy {
       let G = this
       let mSector = svg.group().attr('id', 'majorSectors')
       //show major sectors
-      NOBLANKS.forEach(([j,k])=>{
+      this.allSectors.forEach(([j,k])=>{
         let x = j * MAJORSECTOR
         let y = k * MAJORSECTOR
 
@@ -434,12 +528,13 @@ class Galaxy {
         }).addClass('majorSector').click(async function() {
           let id = this.data("id")
           let f = G.getFactionBySector(id).find(f=>f.era == G._era) || {}
+          let MS = G._sectors.get(id.join())
 
-          console.log(id, f)
+          console.log(MS)
 
           let html = G.app.html
           let text = html`
-            <div class="f4 tc pointer dim bg-light-green br2 pa2 mb1"  onClick=${(e)=>G.followOption()}>View Sector [${id.join()}]</div>
+            <div class="f4 tc pointer dim bg-light-green br2 pa2 mb1"  onClick=${(e)=>G.show = MS}>View Sector [${id.join()}]</div>
             ${!f.name ? "" : html`<div class="f5 i ph2">Faction: ${f.name}</div>`}`
           app.refresh(G._option = [['setMajorSector', id], text])
         })
@@ -448,33 +543,152 @@ class Galaxy {
       }
       )
 
-      //viewbox - image adj size 
-      svg.attr('viewBox', [0, 0, ...MAXLY].join(" "))
-    } else if (what == 'Sector') {
-      this.majorSector.display()
-    } else if (what == 'System') {
-      this.system.display()
-    }
-    else if (what == 'Planet') {
-      this.planet.display()
+      //viewbox
+      svg.attr('viewBox', [0, 0, this._R * 2, this._R * 2].join(" "))
+    } else {
+      this[what].display()
     }
   }
+  /*
+		Save and Load 
+	*/
   async save() {
-    let {seed, opts, _favorites, app} = this
+    let {app, seed, opts} = this
+    await app.DB.setItem(seed, opts)
+    localStorage.setItem("last", seed)
+  }
+  /*
+    UI
+  */
+  get filter() {
+    const {html} = this.app
 
     let data = {
-      seed,
-      opts,
-      favorites: _favorites
+      "Factions": this.factions.sort((a,b)=>a.name < b.name ? -1 : 1),
+      "Historic Factions": this.pastFactions.sort((a,b)=>a.name < b.name ? -1 : 1),
+      "Orbitals": this.orbitals,
+      "Gates": this.gates,
+      "Wormholes": this._wormholes.filter(w=>w[0] == this._era).map(w=>w.slice(2)),
+      "Favorites": this.favorites,
+      "Games": this.opts.games,
+      "Characters": this.opts.characters,
+    }[this._filter]
+
+    const showSystem = (s)=>{
+      this.show = s.sector
+      this.show = s.system
     }
 
-    let state = await app.DB.setItem(seed, data)
+    const ogButton = (o)=>html`
+    <div class="tc pointer dim bg-white flex items-center justify-between db ba br2 ma1 pa2" onClick=${()=>showSystem(o)}>
+      ${o.name}
+      <div class="flex items-center">S[${o.sid.join()}]</div>
+    </div>`
+    const favButton = (o)=>html`
+    <div class="tc pointer bg-white dim flex items-center justify-between db ba br2 ma1 pa2" onClick=${()=>showSystem(o)}>
+      ${o.name}
+      <div class="flex items-center">S[${o.sid.join()}]</div>
+    </div>`
+    const gcButton = (what,o)=>html`
+    <div class="tc pointer bg-white dim flex items-center justify-between db ba br2 ma1 pa2" onClick=${()=>this[what](o.id).show()}>
+      ${o.name || "No Name"}
+      <div class="flex items-center">${o.playbook}</div>
+    </div>`
+
+    if (["Factions", "Historic Factions"].includes(this._filter)) {
+      return html`${data.map(f=>f.UI.button)}`
+    }
+    if (["Orbitals", "Gates"].includes(this._filter)) {
+      return html`${data.map(ogButton)}`
+    } else if (this._filter == "Favorites") {
+      return html`${data.map(favButton)}`
+    } else if (["Games", "Characters"].includes(this._filter)) {
+      return html`${data.map(d=>gcButton("get" + this._filter.slice(0, -1), d))}`
+    } else {
+      return []
+    }
   }
-  async load({seed, opts, favorites}) {
-    this.app.galaxy = new Galaxy(this.app,Object.assign(opts, {
-      seed,
-      favorites
-    }))
+  set show(obj) {
+    if (obj.seed == this.active.seed) {
+      this.display()
+      return this.app.refresh();
+    }
+
+    //update object 
+    let what = obj.what
+    this._show = what
+    this[what] = obj
+    this._option = []
+
+    //check for refresh
+    obj.refresh ? obj.refresh() : null
+
+    //update map and ui 
+    this.display()
+    this.app.refresh()
+
+    console.log(obj)
+  }
+  get show() {
+    return this._show == "Galaxy" ? this.UI : this.active.UI
+  }
+  get UI() {
+    let {app, filter, favorites, _era} = this
+    const {html} = app
+    let {saves, showBars} = app.state
+
+    const SlideBarRight = html`<div class="db tc v-mid pointer dim ba br2 mh1 pa2 ${showBars[1] ? "" : "rotate-180"}" onClick=${()=>app.updateState("showBars", showBars, showBars[1] = !showBars[1])}>➤</div>`
+    const SlideBarLeft = html`<div class="db f4 tc v-mid pointer bg-white dim ba br2 mr1 pa2 ${showBars[0] ? "rotate-180" : ""}" onClick=${()=>app.updateState("showBars", showBars, showBars[0] = !showBars[0])}>➤</div>`
+
+    const header = html`<div class="b pointer underline-hover hover-blue flex mh1" onClick=${()=>this.show = this}>Galaxy</div>`
+
+    //filter sectors 
+    const filters = ["Factions", "Orbitals", "Gates", "Historic Factions"]
+    const possibleFilters = ["favorites", "games", "characters"]
+    possibleFilters.forEach(id=>{
+      if (this.opts[id].length > 0) {
+        filters.splice(1, 0, _.capitalize(id));
+      }
+    }
+    )
+
+    const left = html`
+	${this._option.length == 0 ? "" : this._option[1]}
+	<div class="flex w-100">
+		${SlideBarLeft}
+		<div class="dropdown w-100" style="direction: ltr;">
+			<div class="f4 tc pointer dim underline-hover hover-blue bg-white db pa2 ba br2">${this._filter}</div>
+			<div class="dropdown-content w-100 bg-white ba bw1 pa1">
+				${filters.map(sf=>html`
+				<div class="link pointer underline-hover" onClick=${()=>app.refresh(this._filter = sf)}>${sf}</div>`)}
+			</div>
+		</div>
+	</div>
+	<div class="${showBars[0] ? "" : "dn-ns"}">
+		<div class="overflow-x-hidden overflow-auto" style="max-height:75vh;">
+			${filter.map(f=>html`${f}`)}
+		</div>
+	</div>`
+
+    const right = html`
+	<div class="w-100 f4 flex justify-end mb1">
+		<div class="dropdown w-100">
+		  <div class="tc bg-white pointer dim ba br2 pa2">ID: ${this.seed}</div>
+		  <div class="dropdown-content w-100 bg-white ba bw1 pa1">
+			  ${ERAOPTIONS[_era].map(o=>html`<div class="f4 link pointer underline-hover ma2" onClick=${()=>this.newGame(o)}>${o}</div>`)}
+			  ${saves.filter(s=>s.seed != this.seed).map(s=>html`<div class="f4 link pointer underline-hover ma2" onClick=${()=>app.load(s)}>Load ${s.seed}</div>`)}
+			  <div class="f4 link pointer underline-hover ma2" onClick=${()=>app.new()}>New Galaxy</div>
+		  </div>
+		</div>
+	</div>
+	<div class="${showBars[1] ? "" : "dn-ns"}">
+	</div>`
+
+    return {
+      header,
+      left,
+      right
+    }
   }
 }
 

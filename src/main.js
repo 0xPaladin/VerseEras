@@ -3,9 +3,15 @@
 */
 
 /*
+  Mixins for standard functions
+  Array, Math, Sting...
+*/
+import "./mixins.js"
+
+/*
   Chance RNG
 */
-import "../lib/chance.min.js"
+import "../lib/chance.slim.js"
 const chance = new Chance()
 
 /*
@@ -29,65 +35,7 @@ const DB = localforage.createInstance({
 import {h, Component, render} from '../lib/preact.module.js';
 import htm from '../lib/htm.module.js';
 // Initialize htm with Preact
-const html = htm.bind(h);
-
-//Simple roman numeral conversion 
-Number.prototype.romanNumeral = function() {
-  let n = this
-  var units = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"];
-
-  if (n < 0 || n >= 20) {
-    return n;
-  } else if (n >= 10) {
-    return "X" + (n - 10).romanNumeral();
-  } else {
-    return units[n];
-  }
-}
-
-//Simple roman numeral conversion 
-Number.prototype.suffix = function() {
-  let n = this % 10
-
-  if (this <= 0) {
-    return n;
-  } else if (this > 3 && this < 20) {
-    return this + 'th';
-  } else {
-    return this + ['st', 'nd', 'rd'][n - 1];
-  }
-}
-
-//clamp a number to a value 
-Number.prototype.clamp = function  (min,max) {
-  return this > max ? max : this < min ? min : this
-}
-
-//sum for array 
-Array.prototype.sum = function () {
-  return this.reduce((s,v)=>s+=v,0)
-}
-
-// capitalizes first character of a string
-String.prototype.capitalize = function() {
-  if (this) {
-    return this.substr(0, 1).toUpperCase() + this.substr(1);
-  } else {
-    return '';
-  }
-}
-;
-// standard clamp function -- clamps a value into a range
-Math.clamp = function(a, min, max) {
-  return a < min ? min : (a > max ? max : a);
-}
-;
-
-// linear interpolation from a to b by parameter t
-Math.lerp = function(a, b, t) {
-  return a * (1 - t) + b * t;
-}
-;
+const html = _.html = htm.bind(h);
 
 /*
   App Sub UI
@@ -119,19 +67,20 @@ class App extends Component {
       selected: "",
       showBars : [true,true],
       //time keeping 
-      period : 60, //ticks to a day 
       tick : [0,0,0]
     };
 
     this.DB = DB
     //use in other views 
     this.html = html
-    //generate 
-    this.galaxy = new Galaxy(this)
+
+    _.app = this
   }
 
   // Lifecycle: Called whenever our component is created
   async componentDidMount() {
+    //generate 
+    this.galaxy = new Galaxy(this)
     //display galaxy
     this.galaxy.display()
 
@@ -140,11 +89,18 @@ class App extends Component {
       // Resulting key/value pair
       this.state.saves.push(value)
     }
-    ).then(() => this.refresh())
+    ).then(() => {
+      let _last = this.state.saves.find(s=>s.seed == localStorage.getItem("last")) || null
+      if(_last != null){
+        this.load(_last)
+      }
+      else {this.refresh()}
+    })
 
     //timer 
     setInterval(()=>{
-      this.tick()
+      let tick = this.galaxy.tick()
+      this.setState({tick}) 
     }, 1000)
     
     //Watch for browser/canvas resize events
@@ -158,20 +114,16 @@ class App extends Component {
   // Lifecycle: Called just before our component will be destroyed
   componentWillUnmount() {}
 
-  tick () {
-    let {period,tick} = this.state 
-    //clock timing 
-    tick[0]++
-    //check for day and year 
-    if(tick[0]==period){
-      tick[1]++
-      tick[0]=0
-    }
-    if(tick[1]==365){
-      tick[2]++
-      tick[1]=0
-    }
-    this.setState({tick})
+  new () {
+    this.galaxy = new Galaxy(this)
+    this.galaxy.display()
+    this.refresh()
+  }
+  
+  //load galaxy 
+  async load(opts) {
+    let G = this.galaxy = new Galaxy(this,opts)
+    this.refresh()
   }
 
   //Get data 
@@ -202,8 +154,6 @@ class App extends Component {
     let s = {}
     s[what] = val
     await this.setState(s)
-
-    this.galaxy.display()
   }
   refresh() {
     this.show = this.state.show
@@ -243,6 +193,8 @@ class App extends Component {
     //final layout 
     return html`
 	<div class="absolute z-0 top-0 left-0 w-100 h-100 pa2">
+      <canvas id="starryHost" class="w-100 h-100"></canvas>
+      <div id="map" class="z-0 absolute top-0 left-0 w-100 h-100 pa2"></div>
       ${this.show}
     </div>
     ${this.dialog}

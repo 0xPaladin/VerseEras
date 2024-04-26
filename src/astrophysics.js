@@ -139,7 +139,7 @@ var planetTypeData = [
 		hydrographics: function( pnrg, insolation, radius, density ){
 			var g = gravity( radius, density ),
 					tempK = blackbody( insolation, 0 );
-			return Math.clamp(pnrg.range(-50, 150 - Math.abs(tempK - 270)) * g - Math.abs( density - 5.5 ) * 10, 0, 100).toFixed(0);
+			return _.clamp(pnrg.range(-50, 150 - Math.abs(tempK - 270)) * g - Math.abs( density - 5.5 ) * 10, 0, 100).toFixed(0);
 		},
 		atmosphere: function( pnrg, insolation, radius, density, hydrographics ){
 			if( hydrographics > 0 && insolation > 0.25 && insolation < 2 ){
