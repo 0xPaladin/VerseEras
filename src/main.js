@@ -3,10 +3,19 @@
 */
 
 /*
+  UI Resources  
+*/
+//Preact
+import {h, Component, render} from '../lib/preact.module.js';
+import htm from '../lib/htm.module.js';
+
+/*
   Mixins for standard functions
   Array, Math, Sting...
 */
 import "./mixins.js"
+// Initialize htm with Preact
+const html = _.html = htm.bind(h);
 
 /*
   Chance RNG
@@ -23,25 +32,12 @@ const DB = localforage.createInstance({
   name: "VerseEras",
   storeName: 'favorites',
 })
-/*
-  SVG
-  https://svgjs.dev/docs/3.0/getting-started/
-*/
-
-/*
-  UI Resources  
-*/
-//Preact
-import {h, Component, render} from '../lib/preact.module.js';
-import htm from '../lib/htm.module.js';
-// Initialize htm with Preact
-const html = _.html = htm.bind(h);
 
 /*
   App Sub UI
 */
 import {Galaxy} from './galaxy.js';
-import*as UI from './UI.js';
+import*as UI from './ui/UI.js';
 
 /*
   Declare the main App 
@@ -52,59 +48,58 @@ class App extends Component {
   constructor() {
     super();
     this.state = {
-      saves : [],
-      show: "Galaxy",
-      sub: "",
-      reveal: [],
-      dialog: "",
-      //for UI selection 
-      galaxyView: "Sector",
-      isometric: "Flat",
-      mission: "",
-      filter: "",
-      filterSystem: "All",
-      selection: "",
-      selected: "",
-      showBars : [true,true],
-      //time keeping 
-      tick : [0,0,0]
+      tick: 0,
+      saves: [],
+      show: "Generate",
+      reveal: new Set(),
+      selection: new Map([["crew-edit", {}]]),
+      dialog: ""
     };
 
     this.DB = DB
     //use in other views 
     this.html = html
 
+    window.App = this;
     _.app = this
+
+    _.AppSelect = function(key, val) {
+      let A = window.App
+      A.refresh(A.state.selection.set(key, val))
+    }
   }
 
   // Lifecycle: Called whenever our component is created
   async componentDidMount() {
+    this.show = localStorage.getItem("show") || "About"
     //generate 
     this.galaxy = new Galaxy(this)
     //display galaxy
     this.galaxy.display()
 
     //now get ids for saves 
-    DB.iterate((value,key,iterationNumber)=>{
+    DB.iterate( (value, key, iterationNumber) => {
       // Resulting key/value pair
       this.state.saves.push(value)
     }
-    ).then(() => {
-      let _last = this.state.saves.find(s=>s.seed == localStorage.getItem("last")) || null
-      if(_last != null){
+    ).then( () => {
+      let _last = this.state.saves.find(s => s.seed == localStorage.getItem("last")) || null
+      if (_last != null) {
         this.load(_last)
+      } else {
+        this.refresh()
       }
-      else {this.refresh()}
-    })
+    }
+    )
 
     //timer 
-    setInterval(()=>{
-      let tick = this.galaxy.tick()
-      this.setState({tick}) 
-    }, 1000)
-    
+    setInterval( () => {
+      this.tick()
+    }
+    , 1000)
+
     //Watch for browser/canvas resize events
-    window.addEventListener("resize", ()=>{
+    window.addEventListener("resize", () => {
       this.galaxy.display()
       this.refresh()
     }
@@ -114,12 +109,19 @@ class App extends Component {
   // Lifecycle: Called just before our component will be destroyed
   componentWillUnmount() {}
 
-  new () {
+  tick() {
+    let tick = this.state.tick + 1
+    this.setState({
+      tick
+    })
+  }
+
+  new() {
     this.galaxy = new Galaxy(this)
     this.galaxy.display()
     this.refresh()
   }
-  
+
   //load galaxy 
   async load(opts) {
     let G = this.galaxy = new Galaxy(this,opts)
@@ -161,6 +163,7 @@ class App extends Component {
   }
 
   set show(what) {
+    localStorage.setItem("show", what)
     this.updateState("show", what)
   }
 
@@ -192,9 +195,8 @@ class App extends Component {
 
     //final layout 
     return html`
-	<div class="absolute z-0 top-0 left-0 w-100 h-100 pa2">
-      <canvas id="starryHost" class="w-100 h-100"></canvas>
-      <div id="map" class="z-0 absolute top-0 left-0 w-100 h-100 pa2"></div>
+	<div class="absolute z-1 top-0 left-0 w-100 h-100 pa2">
+      <div class="fr ma2">${UI.TOC()}</div>
       ${this.show}
     </div>
     ${this.dialog}

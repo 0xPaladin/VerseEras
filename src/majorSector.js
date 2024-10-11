@@ -1,6 +1,5 @@
 import {MakeName} from './random_name.js';
 
-import {StarsInSector} from './starryHost.js';
 import {System} from './starSystem.js';
 
 import {CreatePOI} from './poi.js';

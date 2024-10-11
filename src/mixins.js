@@ -1,6 +1,17 @@
 (function() {
   const _ = {}
 
+  /*
+  Isometric 
+*/
+
+  _.toIsometric = function (_x,_y,_z) {
+    return {
+      x: (_x - _y) * 0.866025,
+      y: _z + (_x + _y) * 0.5
+    }
+  }
+
   //Simple roman numeral conversion 
   _.romanNumeral = function(n) {
     var units = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"];
