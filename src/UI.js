@@ -3,20 +3,21 @@ const ERAS = ["Heralds", "Frontier", "Firewall", "ExFrame", "Wanderer"]
 /*
 	UI Tempaltes
 */
+
 _.UISelect = function(data, val, f, css="") {
   return _.html`
 	<select class=${css} value=${val} onChange=${f}>
-        ${data.map(o=>_.html`<option value=${o}>${Array.isArray(o) ? o[0] : o}</option>`)}
+        ${data.map(o => _.html`<option value=${o}>${Array.isArray(o) ? o[0] : o}</option>`)}
     </select>`
 }
 
-_.UIDropdown = function(button,css="") {
+_.UIDropdown = function(button, css="") {
   return _.html`
 	<div class="dropdown ${css}" style="direction: ltr;">
 		<div class="f4 tc pointer dim underline-hover hover-blue bg-white db pa2 ba br2">${button}</div>
 		<div class="dropdown-content w-100 bg-white ba bw1 pa1">
-			${filters.map(sf=>html`
-			<div class="link pointer underline-hover" onClick=${()=>app.refresh(this._filter = sf)}>${sf}</div>`)}
+			${filters.map(sf => html`
+			<div class="link pointer underline-hover" onClick=${ () => app.refresh(this._filter = sf)}>${sf}</div>`)}
 		</div>
 	</div>`
 }
@@ -25,33 +26,34 @@ _.UIDropdown = function(button,css="") {
   UI Resources  
 */
 
-const Main = (app)=>{
+const Main = (app) => {
   const {html} = app
 
   return html`
   <div class="flex flex-column justify-center m-auto mw6">
-    <div class="f3 tc link pointer dim underline-hover hover-orange bg-white-70 db br2 mv1 pa2" onClick=${()=>app.show = "Start"}><i>Start</i></div>
+    <div class="f3 tc link pointer dim underline-hover hover-orange bg-white-70 db br2 mv1 pa2" onClick=${ () => app.show = "Start"}><i>Start</i></div>
   </div>
   `
 }
 
-const Galaxy = (app)=>{
+
+
+const Galaxy = (app) => {
   let html = app.html
   let {tick} = app.state
   let G = app.galaxy || {}
-  let {time=[30], show={}, _show="Galaxy", _era="Wanderer"} = G
-  let period = time[0]
+  let {show={}, _show="Galaxy", _era="Wanderer"} = G
   let {left="", right="", header=""} = show
 
   return html`
   <div class="absolute top-0 left-0 pa2" style="max-width: 20rem;background-color: rgba(255,255,255,0.5);"> 
 	<h3 class="ma0 pv1">
-		<h2 class="flex ma0" onClick=${()=>app.refresh()}>
+		<h2 class="flex ma0" onClick=${ () => app.refresh()}>
 			<span>Verse :: </span> 
 			<div class="ml2 ${G && G._show == 'Galaxy' ? 'dropdown' : ''}" style="direction: ltr;">
 				<div class="pointer underline-hover hover-blue">${G._era}</div>
 				<div class="dropdown-content w-100 bg-white ba bw1 pa1">
-					${ERAS.map(e=>html`<div class="f4 link pointer underline-hover ma2" onClick=${()=>G.display("Galaxy", G.era = e)}>${e}</div>`)}
+					${ERAS.map(e => html`<div class="f4 link pointer underline-hover ma2" onClick=${ () => G.display("Galaxy", G.era = e)}>${e}</div>`)}
 				</div>
 			</div>
 		</h2>
@@ -60,19 +62,15 @@ const Galaxy = (app)=>{
 	${left}
   </div>
   <div class="absolute top-0 right-0 w5 pa2">
-	<div class="relative h1 bg-gray w-100 br2 mb1">
-		<div class="ab-center tc b white">Day ${tick[1] + 1}</div>
-		<div class="h-100 bg-green br2" style="width:${100 * tick[0] / period}%;"></div>
-	</div>
 	${right}
   </div>`
 }
 
-const GalaxyFactionUI = (app)=>{
+const GalaxyFactionUI = (app) => {
   return app.galaxy.Faction.UI.dialog
 }
 
-const StartGame = (app)=>{
+const StartGame = (app) => {
   return app.galaxy.Faction.UI.dialog
 }
 
@@ -80,7 +78,7 @@ const D = {
   Main,
   GalaxyFactionUI
 }
-const Dialog = (app)=>{
+const Dialog = (app) => {
   let[what,id,ui] = app.state.dialog.split(".")
 
   return app.html`

@@ -2,6 +2,8 @@
 //https://github.com/snorpey/circlepacker
 //import {CirclePacker} from '../lib/circlepacker.esm.min.js';
 
+import './galaxy-three.js';
+
 import {GasGiantColors} from './data.js';
 
 import {Game, GameTemplates} from './game/games.js';
@@ -9,7 +11,6 @@ import {Character} from './game/characters.js';
 
 import {Faction, Ancients} from './factions.js';
 
-import {FillGalaxy, Sectors, Allowable, BBox} from './starryHost.js';
 import {MajorSector} from './majorSector.js';
 
 /*
@@ -252,69 +253,7 @@ class Galaxy {
   constructor(app, opts={}) {
     this.app = app
 
-    //object info 
-    this.what = "Galaxy"
-    this.w = GALAXYWIDTH / SECTOR
-
-    //eras 
-    this.eraList = ERAS
-    this._era = "Wanderer"
-
-    //state 
-    let o = this.opts = opts
-    //seed for rng 
-    o.seed = opts.seed || chance.string({
-      alpha: true,
-      length: 10,
-      casing: 'upper'
-    })
-    //time keeping - era, period, seconds, days, years 
-    o.time = opts.time || ERAS.map(e=>[e, 30, [0, 0, 0]])
-    //state that is saved - may be updated by user 
-    o.favorites = opts.favorites || []
-    o.characters = opts.characters || []
-    o.games = opts.games || []
-
-    this._sectors = new Map()
-
-    //start generation 
-    let RNG = new Chance(this.seed)
-
-    //Radius and twist 
-    let _R = RNG.randBetween(8, 12)
-    this._R = _R * 5000
-    this._twist = RNG.randBetween(30, 150)/10
-
-    //create star backdrop 
-    console.time('Starry Host')
-    FillGalaxy(this)
-    console.timeEnd('Starry Host')
-
-    //Factions 
-    console.time('Galaxy Factions')
-    this._factions = EstablishFactions(this, ERAFACTIONS)
-    this._factions.forEach(f=>f.initialize(RNG))
-    console.timeEnd('Galaxy Factions')
-
-    //wormholes for every era 
-    this._wormholes = this.eraList.slice(1).map((e,ei)=>{
-      let esids = RNG.shuffle(this.allowableSectors)
-      return _.fromN(RNG.sumDice("2d4"), ()=>[e, ei + 1, ...esids.splice(0, 2)])
-    }
-    ).flat()
-
-    this._show = 'Galaxy'
-    this._option = []
-    this._filter = "Factions"
-
-    //pause for display and then create standard voronoi
-    setTimeout(()=>{
-      this.allSectors.forEach(id=>this._sectors.set(id.join(), new MajorSector(this,id)))
-    }
-    , 1000)
-
-    //pause for display and then create standard voronoi
-    setTimeout(()=>SetVoronoi(this), 2000)
+    
   }
   get seed() {
     return this.opts.seed
@@ -385,23 +324,6 @@ class Galaxy {
 */
   //passage of time 
   tick() {
-    let T = this.opts.time
-    //era, period, seconds, days, years 
-    let ti = T.map(t=>t[0]).indexOf(this._era)
-    let[period,tick] = T[ti].slice(1)
-    //clock timing 
-    tick[0]++
-    //check for day and year 
-    if (tick[0] == period) {
-      tick[1]++
-      tick[0] = 0
-    }
-    if (tick[1] == 365) {
-      tick[2]++
-      tick[1] = 0
-    }
-    T[ti] = [this._era, period, tick]
-    return tick
   }
   //random 
   random(RNG=chance) {
@@ -476,78 +398,6 @@ class Galaxy {
 	SVG
 */
   display(what=this._show) {
-    if (SVG('svg')) {
-      SVG.find('svg').remove()
-    }
-
-    let mapBBox = document.querySelector("#map").getBoundingClientRect()
-    let minD = mapBBox.height < mapBBox.width ? ["h", mapBBox.height] : ["w", mapBBox.width]
-
-    let G = this
-    let app = this.app
-    let svg = SVG().addTo('#map').size('100%', '100%')
-
-    this._show = what
-
-    let claimmap = svg.group().attr('id', 'claims')
-
-    //major faction claims 
-    this.factions.forEach((f,i)=>{
-      let scpr = f.claims.map(c=>c.pr.map(_pr=>[c.sid, ..._pr])).flat()
-      scpr.forEach(([sid,cx,cy,r])=>{
-        let _claim = svg.circle(r * 2).attr({
-          cx,
-          cy
-        }).addClass('claim').fill(f.color).data({
-          fi: i,
-        }).click(async function() {
-          let fi = this.data("fi")
-          console.log(G.factions[fi])
-        })
-
-        claimmap.add(_claim)
-      }
-      )
-    }
-    )
-
-    if (what == 'Galaxy') {
-      let G = this
-      let mSector = svg.group().attr('id', 'majorSectors')
-      //show major sectors
-      this.allSectors.forEach(([j,k])=>{
-        let x = j * MAJORSECTOR
-        let y = k * MAJORSECTOR
-
-        //create svg object
-        let s = svg.rect(MAJORSECTOR, MAJORSECTOR).attr({
-          x,
-          y
-        }).data({
-          id: [j, k]
-        }).addClass('majorSector').click(async function() {
-          let id = this.data("id")
-          let f = G.getFactionBySector(id).find(f=>f.era == G._era) || {}
-          let MS = G._sectors.get(id.join())
-
-          console.log(MS)
-
-          let html = G.app.html
-          let text = html`
-            <div class="f4 tc pointer dim bg-light-green br2 pa2 mb1"  onClick=${(e)=>G.show = MS}>View Sector [${id.join()}]</div>
-            ${!f.name ? "" : html`<div class="f5 i ph2">Faction: ${f.name}</div>`}`
-          app.refresh(G._option = [['setMajorSector', id], text])
-        })
-
-        mSector.add(s)
-      }
-      )
-
-      //viewbox
-      svg.attr('viewBox', [0, 0, this._R * 2, this._R * 2].join(" "))
-    } else {
-      this[what].display()
-    }
   }
   /*
 		Save and Load 
@@ -630,7 +480,7 @@ class Galaxy {
     console.log(obj)
   }
   get show() {
-    return this._show == "Galaxy" ? this.UI : this.active.UI
+    return 
   }
   get UI() {
     let {app, filter, favorites, _era} = this

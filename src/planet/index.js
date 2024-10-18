@@ -253,8 +253,11 @@ class Planetoid {
 
     svg.append('g').attr('class', `polygons ${this.cssClass}`).selectAll('path').data(pTopo.polys).enter().append('path').attr('class', 'poly').attr('d', path).attr('fill', this._gradient ? "white" : function(d, i) {
       return d.color
-    }
-    ).on("click", (e,d)=>{
+    })
+	.attr('stroke', (d,i)=> {
+		return d.color
+	})
+    .on("click", (e,d)=>{
       const [x,y] = d3.pointer(e)
       console.log(d)
     }

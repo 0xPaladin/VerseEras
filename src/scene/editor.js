@@ -6,28 +6,28 @@
   UI Resources  
 */
 //Preact
-import {h, Component, render} from '../lib/preact.module.js';
-import htm from '../lib/htm.module.js';
+import { h, render, Component } from 'https://esm.sh/preact';
+import htm from 'https://esm.sh/htm';
 
 /*
   Mixins for standard functions
   Array, Math, Sting...
 */
-import "./mixins.js"
+import "../utils/mixins.js"
 // Initialize htm with Preact
 const html = _.html = htm.bind(h);
 
 /*
   Chance RNG
 */
-import "../lib/chance.slim.js"
+import "../../lib/chance.slim.js"
 const chance = new Chance()
 
 /*
   Storage - localforage
   https://localforage.github.io/localForage/
 */
-import "../lib/localforage.min.js"
+import "../../lib/localforage.min.js"
 const DB = localforage.createInstance({
   name: "VerseEras",
   storeName: 'favorites',
@@ -36,13 +36,13 @@ const DB = localforage.createInstance({
 /*
   App Sub UI
 */
-import {Galaxy} from './galaxy.js';
-import*as UI from './ui/UI.js';
+import * as Scenarios from "../scenarios/index.js"
+import { Scene } from "./scene.js"
+import * as UI from "../ui/UI.js"
 
 /*
   Declare the main App 
 */
-const ERAS = ["Heralds", "Frontier", "Firewall", "ExFrame", "Wanderer"]
 
 class App extends Component {
   constructor() {
@@ -50,11 +50,15 @@ class App extends Component {
     this.state = {
       tick: 0,
       saves: [],
-      show: "Generate",
+      show: "",
       reveal: new Set(),
       selection: new Map([["crew-edit", {}]]),
-      dialog: ""
+      dialog: "",
+      unlocked : {}
     };
+
+    //set unlocked for each chapter 
+    Object.keys(Scenarios).forEach(s => this.state.unlocked[s] = [])
 
     this.DB = DB
     //use in other views 
@@ -63,51 +67,31 @@ class App extends Component {
     window.App = this;
     _.app = this
 
+    //update selection 
     _.AppSelect = function(key, val) {
       let A = window.App
       A.refresh(A.state.selection.set(key, val))
+    }
+
+    //whether to show or not based upon unlocked
+    _.show = function(key) {
+      let [chapter,id] = key.split(",")
+      return window.App.state.unlocked[chapter].includes(id)
     }
   }
 
   // Lifecycle: Called whenever our component is created
   async componentDidMount() {
-    this.show = localStorage.getItem("show") || "About"
-    //generate 
-    this.galaxy = new Galaxy(this)
-    //display galaxy
-    this.galaxy.display()
-
-    //now get ids for saves 
-    DB.iterate( (value, key, iterationNumber) => {
-      // Resulting key/value pair
-      this.state.saves.push(value)
-    }
-    ).then( () => {
-      let _last = this.state.saves.find(s => s.seed == localStorage.getItem("last")) || null
-      if (_last != null) {
-        this.load(_last)
-      } else {
-        this.refresh()
-      }
-    }
-    )
 
     //timer 
-    setInterval( () => {
+    setInterval(() => {
       this.tick()
     }
-    , 1000)
-
-    //Watch for browser/canvas resize events
-    window.addEventListener("resize", () => {
-      this.galaxy.display()
-      this.refresh()
-    }
-    );
+      , 1000)
   }
 
   // Lifecycle: Called just before our component will be destroyed
-  componentWillUnmount() {}
+  componentWillUnmount() { }
 
   tick() {
     let tick = this.state.tick + 1
@@ -116,31 +100,21 @@ class App extends Component {
     })
   }
 
-  new() {
-    this.galaxy = new Galaxy(this)
-    this.galaxy.display()
-    this.refresh()
-  }
-
-  //load galaxy 
-  async load(opts) {
-    let G = this.galaxy = new Galaxy(this,opts)
-    this.refresh()
-  }
-
-  //Get data 
-  get sector() {
-    return this.galaxy.sector
-  }
-  get region() {
-    return this.galaxy.region
+  /*
+    Game Functions 
+  */
+  setUnlock (u) {
+    u.forEach(ukey => {
+      let [chapter,key] = ukey.split(",")
+      this.state.unlocked[chapter].includes(key) ? null : this.state.unlocked[chapter].push(key)
+    })
   }
 
   /*
     Render functions 
   */
 
-  notify(text, type="success") {
+  notify(text, type = "success") {
     let opts = {
       theme: "relax",
       type,
@@ -152,7 +126,7 @@ class App extends Component {
   }
 
   //main function for updating state 
-  async updateState(what, val="") {
+  async updateState(what, val = "") {
     let s = {}
     s[what] = val
     await this.setState(s)
@@ -168,8 +142,8 @@ class App extends Component {
   }
 
   get show() {
-    let[what,id] = this.state.show.split(".")
-    return UI[what] ? UI[what](this) : this[what] ? this[what][id].UI ? this[what][id].UI() : "" : ""
+    let [what, id] = this.state.show.split(".")
+    return UI[what] ? UI[what](this) : this[what] ? (this[what].UI || this[what][id].UI()) : ""
   }
 
   set dialog(what) {
@@ -179,24 +153,36 @@ class App extends Component {
   }
 
   get dialog() {
-    let[what,id] = this.state.dialog.split(".")
+    let [what, id] = this.state.dialog.split(".")
     return what == "" ? "" : UI.Dialog(this)
   }
 
   //clears current UI 
   cancel() {
     this.show = ""
-    this.dialog = "Main"
+    this.dialog = ""
   }
 
   //main page render 
-  render({}, {show, active, selected, filter, filterSystem, isometric, galaxyView}) {
-    let G = this.galaxy
+  render({ }, { show, selection }) {
+    let sid = selection.get("scene-select") || []
 
     //final layout 
     return html`
 	<div class="absolute z-1 top-0 left-0 w-100 h-100 pa2">
-      <div class="fr ma2">${UI.TOC()}</div>
+      <div class="fr flex ma2">
+        <select class="pa1" value=${sid} onChange=${(e) => _.AppSelect("scene-select", e.currentTarget.value)}>
+          ${Object.entries(Scenarios).map(([chapter, scenes]) => Object.keys(scenes).map(s => {
+      return html`<option value=${[chapter, s]}>${chapter} - ${s}</option>`
+    }))}
+        </select>
+        <div class="btn bg-light-green pa1 ph3 mh2" onClick=${() => Scene.enter(sid)}>Enter</div>
+        <div class="btn bg-light-green pa1 ph3">Clear</div>
+      </div>
+      <div class="z-5 fr ma2">
+        ${UI.TOC()}
+        <div class="f3 btn bg-light-gray br2 p1"><img src="img/lantern.png" width="40"></img></div>
+      </div>
       ${this.show}
     </div>
     ${this.dialog}
@@ -205,10 +191,3 @@ class App extends Component {
 }
 //<canvas id="renderCanvas"></canvas>
 render(html`<${App}/>`, document.body);
-
-function reportWindowSize() {
-  heightOutput.textContent = window.innerHeight;
-  widthOutput.textContent = window.innerWidth;
-}
-
-window.onresize = reportWindowSize;
