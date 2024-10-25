@@ -6,7 +6,7 @@
   Mixins for standard functions
   Array, Math, Sting...
 */
-import "./mixins.js"
+import "./utils/mixins.js"
 
 /*
   Chance RNG
@@ -40,47 +40,62 @@ const html = _.html = htm.bind(h);
 /*
   App Sub UI
 */
-import {Galaxy} from './galaxy.js';
-import*as UI from './UI.js';
+import {Galaxy} from './galaxy/galaxy.js';
+import*as UI from './ui/UI.js';
 
 /*
   Declare the main App 
 */
-const ERAS = ["Heralds", "Frontier", "Firewall", "ExFrame", "Wanderer"]
+const ERAS = ["Heralds", "Frontier", "Firewall", "ExFrame", "Cosmic"]
 
 class App extends Component {
   constructor() {
     super();
     this.state = {
       saves : [],
-      show: "Galaxy",
-      sub: "",
-      reveal: [],
+      show: "galaxy",
       dialog: "",
+      reveal: new Set(),
+      selection: new Map([["crew-edit", {}]]),
+      unlocked : {},
       //for UI selection 
       galaxyView: "Sector",
       isometric: "Flat",
       mission: "",
       filter: "",
       filterSystem: "All",
-      selection: "",
-      selected: "",
-      showBars : [true,true],
       //time keeping 
-      tick : [0,0,0]
+      tick : 0
     };
+
+    //focus object 
+    this._focus = {}
 
     this.DB = DB
     //use in other views 
     this.html = html
 
+    window.App = this;
     _.app = this
+
+    //update selection 
+    _.AppSelect = function(key, val) {
+      let A = window.App
+      A.refresh(A.state.selection.set(key, val))
+    }
+
+    //whether to show or not based upon unlocked
+    _.show = function(key) {
+      let u = window.App.state.unlocked
+      let [chapter,id] = key.split(",")
+      return u[chapter] ? u[chapter].includes(id) : false 
+    }
   }
 
   // Lifecycle: Called whenever our component is created
   async componentDidMount() {
     //generate 
-    this.galaxy = new Galaxy(this)
+    this._focus = this.galaxy = new Galaxy(this)
     //display galaxy
     this.galaxy.display()
 
@@ -99,7 +114,7 @@ class App extends Component {
 
     //timer 
     setInterval(()=>{
-      let tick = this.galaxy.tick()
+      let tick = this.state.tick+1
       this.setState({tick}) 
     }, 1000)
     
@@ -114,10 +129,14 @@ class App extends Component {
   // Lifecycle: Called just before our component will be destroyed
   componentWillUnmount() {}
 
-  new () {
-    this.galaxy = new Galaxy(this)
-    this.galaxy.display()
-    this.refresh()
+  /*
+    Game Functions 
+  */
+  setUnlock (u) {
+    u.forEach(ukey => {
+      let [chapter,key] = ukey.split(",")
+      this.state.unlocked[chapter].includes(key) ? null : this.state.unlocked[chapter].push(key)
+    })
   }
   
   //load galaxy 
@@ -125,15 +144,6 @@ class App extends Component {
     let G = this.galaxy = new Galaxy(this,opts)
     this.refresh()
   }
-
-  //Get data 
-  get sector() {
-    return this.galaxy.sector
-  }
-  get region() {
-    return this.galaxy.region
-  }
-
   /*
     Render functions 
   */
@@ -162,11 +172,14 @@ class App extends Component {
 
   set show(what) {
     this.updateState("show", what)
+    //display 
+    this._focus.display ? this._focus.display() : null 
   }
 
   get show() {
-    let[what,id] = this.state.show.split(".")
-    return UI[what] ? UI[what](this) : this[what] ? this[what][id].UI ? this[what][id].UI() : "" : ""
+    let [what] = this.state.show.split(".")
+    //chain of display - main ui, subcomponent ui, sub UI 
+    return UI[what] ? UI[what](this) : (this._focus.UI || "")
   }
 
   set dialog(what) {
@@ -183,19 +196,53 @@ class App extends Component {
   //clears current UI 
   cancel() {
     this.show = ""
-    this.dialog = "Main"
+    this.dialog = ""
   }
 
   //main page render 
-  render({}, {show, active, selected, filter, filterSystem, isometric, galaxyView}) {
-    let G = this.galaxy
+  render({}, {show,selection}) {
+    let G = this.galaxy || {}
+    let _f = this._focus
+    let sectorSelect = selection.get("select-sector") || ""
+    let systemSelect = selection.get("select-system") || ""
+    let eraSelect = selection.get("select-era") || "Cosmic"
+
+    let depth = ["galaxy","sector","system"].indexOf(show)
+    let _select = [sectorSelect,systemSelect,""][depth]
 
     //final layout 
     return html`
 	<div class="absolute z-0 top-0 left-0 w-100 h-100 pa2">
-      <canvas id="starryHost" class="w-100 h-100"></canvas>
+      <canvas id="starryHost" class="w-100 h-100 ${show=='galaxy'?'':'dn'}"></canvas>
       <div id="map" class="z-0 absolute top-0 left-0 w-100 h-100 pa2"></div>
       ${this.show}
+      <div class="absolute top-0 left-0 pa2 ma1" style="max-width: 20rem;background-color: rgba(255,255,255,0.5);"> 
+        <h2 class="flex ma0" onClick=${()=>this.refresh()}>
+        	<span>Verse :: </span> 
+        	<div class="ml2 dropdown" style="direction: ltr;">
+              <div class="pointer underline-hover hover-blue">${eraSelect}</div>
+              <div class="dropdown-content w-100 bg-white ba bw1 pa1">
+        		${(G.eraList || []).map(e=>html`<div class="f4 link pointer underline-hover ma2" onClick=${()=>_.AppSelect("select-era",e)}>${e}</div>`)}
+              </div>
+          </div>
+        </h2>
+        <h3 class="ma0 pv1">	
+          <div class="flex items-center flex-wrap">
+            <div class="b pointer underline-hover hover-blue mh1" onClick=${ () => (this._focus=G,this.show = "galaxy")}>Galaxy</div>
+            <span class="${depth>0 ? '' : 'dn'}">::</span>
+            <div class="b pointer underline-hover hover-blue mh1 ${depth>0 ? '' : 'dn'}" onClick=${ () => this.show = "Galaxy"}>Sector</div>
+            <span class="${depth>1 ? '' : 'dn'}">::</span>
+            <div class="b pointer underline-hover hover-blue mh1 ${depth>0 ? '' : 'dn'}" onClick=${ () => this.show = "Galaxy"}>System</div>
+          </div>
+        </h3>
+        ${_select}
+      </div>
+      <div class="absolute z-5 top-0 right-0 ma3">
+        ${UI.TOC()}
+        <div class="dib v-mid btn bg-light-gray br2 ml2">
+          <img src="img/lantern.png" width="45"></img>
+        </div>
+      </div>
     </div>
     ${this.dialog}
     `

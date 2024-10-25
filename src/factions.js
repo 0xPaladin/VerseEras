@@ -1,11 +1,11 @@
-import {MakeName} from './random_name.js';
+import {MakeName} from './utils/randomName.js';
 import {RandomPeople} from './people.js';
 import*as Data from './data.js';
 
 /*
   Ancients 
 */
-const Ancients = ['Crysik', 'Cthulhi', 'Deep Dwellers', 'Dholes', 'Elder Things', 'Hydra', 'Mi-go', 'Morkoth', 'Neh-thalggu', 'Rhukothi', 'Shk-mar', 'Shoggoth', 'Space Polyps', 'Worms', 'Xsur', 'Yellow Court', 'Yith']
+const Ancients = ['Crysik', 'Cthulhi', 'Deep Dwellers', 'Dholes', 'Elder Things', 'Hydra', 'Mi-go', 'Morkoth', 'Neh-thalggu', 'Rhukothi', 'Shk-mar', 'Shoggoth', 'Space Polyps', 'Worms', 'Xsur', 'Yellow Court', 'Yith', 'Hegemony']
 
 const CreateAncient = (RNG)=>{
   let type = RNG.shuffle(['air', 'earth', 'water', 'air', 'earth', 'water']).slice(0, 2).map(t=>_.capitalize(RNG.pickone(RNG.pickone(Data.Animals[t]).split("/")))).join("/");
@@ -67,8 +67,8 @@ class Faction {
     this.seed = opts.seed || chance.natural()
     this.id = opts.id || 0
 
-    this.era = opts.era ? opts.era[0] : ""
-    this._eraType = opts.era ? opts.era[1] : "n"
+    this.era = opts.era || ""
+    let threat = this.threat = opts.threat || "n"
 
     let RNG = new Chance([this.seed, "Faction", this.id].join("."))
 
@@ -89,9 +89,8 @@ class Faction {
       this._people = template.gen(RNG) 
     }
 
-    let type = this._eraType
     //['Evil', 'Chaotic', 'Neutral', 'Lawful', 'Good']
-    this.alignment = type == "t" ? RNG.pickone(['Evil', 'Chaotic']) : type == "n" ? RNG.weighted(['Chaotic', 'Neutral', 'Lawful'], [1, 4, 1]) : RNG.pickone(['Lawful', 'Good'])
+    this.alignment = threat == "t" ? RNG.pickone(['Evil', 'Chaotic']) : threat == "n" ? RNG.weighted(['Chaotic', 'Neutral', 'Lawful'], [1, 4, 1]) : RNG.pickone(['Lawful', 'Good'])
 
     this.populace = RNG.weighted(POPULACE, [1, 2, 6, 2, 1])
 
@@ -107,15 +106,9 @@ class Faction {
     this.type = RNG.pickone(FACTIONTYPES)
 
     //create the standard people of the region 
-    this.thralls = type == 't' ? _.fromN(3, ()=>RandomPeople(RNG)) : []
+    this.thralls = threat == 't' ? _.fromN(3, ()=>RandomPeople(RNG)) : []
 
     this._ob = RNG.bool()
-
-    //names 
-    let _names = []
-    //for faction add systems - max will be 30 : id, type, center of gravity, r, theta, z, d100, name
-    this._systems = _.fromN(50, (i)=>[1000000 + i + (this.id * 500), RNG.pickone(["Settlement", "Site"]), RNG.random(), Math.sqrt(RNG.random()), RNG.random() * 2 * Math.PI, RNG.randBetween(1, 1000),RNG.d100(),MakeName(_names,RNG)])
-    this._systems.forEach(s=>s[1] = s[1] == "Settlement" ? RNG.weightedString(this.settlementTypes) : RNG.weighted(['Outpost', 'Resource', 'Gate', 'Infrastructure'], [2, 2, 1, 1]))
   }
   get app () {
     return this.parent.app
@@ -136,13 +129,13 @@ class Faction {
   get settlementTypes() {
     if (['Ikarya', 'Hordes'].includes(this.people))
       return "Planet/1";
-    if (['Tyrants', 'Red Dawn'].includes(this.people))
+    if (['Tyrants', 'Red Dawn', "Dominion", "Architects"].includes(this.people))
       return "Orbital,Planet/1,1";
     if (this.people == 'Gemeli')
-      return "Plabet,Moon,Space/1,2,4";
+      return "Planet,Moon,Space/1,2,4";
     if (this.people == 'Lyns')
       return "Planet,Space/3,1";
-    if (this.isProtoAncient)
+    if (this.people == 'Proto-Ancient')
       return "Orbital,Planet,Moon/3,3,1";
     if (this.isAncient)
       return "Planet,Moon,Space/3,1,1";
@@ -154,7 +147,7 @@ class Faction {
       return "Orbital,Planet,Moon/4,1,1";
     if (this.era == "ExFrame")
       return "Moon,Space/1,3"
-    if (this.era == "Wanderer")
+    if (this.era == "Cosmic")
       return "Orbital,Space/4,1";
   }
   get isAI() {
@@ -214,69 +207,9 @@ class Faction {
   get gates () {
     return this.parent.pastFactions.filter(f=> f.id == this.id || f.people==this.people).map(f=> f.systemsInSector().filter(s=>s.type=="Gate")).flat()
   }
-  systemsInSector(MS=null) {
-    //if no sector is provided it returns all systems 
-    let G = this.parent
-    let fei = G.eraList.indexOf(this.era)
-    let ei = G.eraList.indexOf(G._era)
-    let de = fei - ei
-    //if era is less than the era of the faction 
-    if (de > 0)
-      return [];
-    //claims 
-    let claims = this.claims.map(c=>c.pr.map(pr=>Object.assign({
-      pr
-    }, {
-      sid: c.sid
-    }))).flat()
-    let nc = this.claims.length
-    //get systems based on tier - remove those not in sector 
-    let systems = this._systems.slice(0, 10 * this.tier).map((s,i)=>{
-      let ci = Math.floor(claims.length * s[2])
-      let {pr, sid} = claims[ci]
-      return {
-        cp: pr,
-        sid,
-        s,
-        i
-      }
-    }
-    ).filter(s=> MS ? MS.isSameSector(...s.sid) : true)
-    //return based on tier 
-    return systems.map(({cp, s, i, sid})=>{
-      //convert center, r, theta to p 
-      let[r,theta,z] = s.slice(3, 6)
-      let[cx,cy,cr] = cp
-      let x = cx + (r * cr) * Math.cos(theta)
-      let y = cy + (r * cr) * Math.sin(theta)
-
-      //determine owner 
-      let altFaction = MS ? MS.factions.filter(f=>f.isWithinClaims(x, y))[0] || null : null
-      let f = de == 0 ? this : altFaction 
-      let isCore = i < nc
-
-      //id, type, center of gravity, r, theta, z, d100, name
-      return {
-        _i : i,
-        f: f,
-        creator: this,
-        ei: fei,
-        isCore,
-        i: s[0],
-        d100: s[6],
-        name : s[7],
-        sid,
-        type: isCore? this.settlementTypes.split("/")[0].split(",")[0] : s[1],
-        p: [Math.round(x), Math.round(y),z],
-        get sector () {
-          return this.creator.parent._sectors.get(this.sid.join())
-        },
-        get system () {
-          return this.sector.systems.find(s=>s.id==this.i)
-        }
-      }
-    }
-    )
+  systemsInSector(MS) {
+    MS.refresh()
+    return MS._fs.filter(s => s._f && s._f.id == this.id) 
   }
   /*
   UI

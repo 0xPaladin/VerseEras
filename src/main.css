@@ -11,6 +11,22 @@ h1, h2, h3 {
   font-family: "MedievalSharp", sans-serif;
 }
 
+/* Button */
+
+.btn {
+  cursor: pointer;
+  text-align: center;
+  border-style: outset;
+  border-width: 1px;
+  opacity: 1;
+  transition: opacity .15s ease-in;
+}
+.btn:focus, .btn:hover {
+  border-color: white;
+  opacity: .5;
+  transition: opacity .15s ease-in;
+}
+
 .ab-center {
   position: absolute;
   top: 50%;
@@ -76,7 +92,7 @@ h1, h2, h3 {
   background-size: contain;
 }
 
-.majorSector {
+.sector {
   cursor: pointer;
   fill: white;
   fill-opacity: 0;
@@ -84,15 +100,15 @@ h1, h2, h3 {
   stroke-opacity: 0.5;
 }
 
-.majorSector:hover {
+.sector:hover {
   stroke-width : 30;
   stroke-opacity: 1;
-  fill-opacity: 0.5;
+  fill-opacity: 0.75;
 }
 
 .grid {
   fill: black;
-  fill-opacity: 1;
+  fill-opacity: 0.3;
   stroke : white;
   stroke-width : 5;
   stroke-opacity: 0.5;
@@ -100,7 +116,7 @@ h1, h2, h3 {
 
 .claim {
   cursor: pointer;
-  fill-opacity: 0.5;
+  fill-opacity: 0.7;
 }
 
 .star, .poi {
@@ -140,7 +156,7 @@ h1, h2, h3 {
   stroke-width : 1;
   stroke-opacity: 0.25;
 }
-  
+
 .poly:hover {
   stroke: white;
   stroke-width : 2;
