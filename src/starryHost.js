@@ -1,5 +1,50 @@
-import {MajorSector} from './majorSector.js';
-import {starTypeData} from './astrophysics.js';
+/*
+  Stars
+  =====
+*/
+
+const starTypeData = {
+  "O": {
+    luminosity: 50000,
+    color: 'rgb(255,192,255)',
+    planets: [0, 3]
+  },
+  "B": {
+    luminosity: 15000,
+    color: 'rgb(192,160,255)',
+    planets: [1, 5]
+  },
+  "A": {
+    luminosity: 25,
+    color: 'rgb(128,192,255)',
+    planets: [1, 7]
+  },
+  "F": {
+    luminosity: 2.5,
+    color: 'rgb(160,255,128)',
+    planets: [1, 11]
+  },
+  "G": {
+    luminosity: 1,
+    color: 'rgb(255,255,64)',
+    planets: [1, 19]
+  },
+  "K": {
+    luminosity: 0.25,
+    color: 'rgb(255,192,64)',
+    planets: [1, 9]
+  },
+  "M": {
+    luminosity: 0.05,
+    color: 'rgb(255,64,0)',
+    planets: [1, 5]
+  },
+  "black hole": {
+    luminosity: 100000,
+    color: 'rgb(128,0,64)',
+    planets: [0, 0]
+  }
+};
 
 /*
   Modified from https://codepen.io/hadrianhughes/pen/mdbqGja
@@ -7,7 +52,6 @@ import {starTypeData} from './astrophysics.js';
 
 let canvas = null
 let Galaxy = null
-let Sectors = []
 let Points = []
 let Allowable = []
 let BBox = [Infinity, Infinity, 0, 0]
@@ -28,11 +72,20 @@ let spinFactor = 0.5;
 let armRadius = R * 0.1;
 let radius = R / 2;
 
+//counts stars in sector
+const getStarsInSector = () => {
+  let res = [];
+  _.fromN(2 * R / 50, (i) => _.fromN(2 * R / 50, (j) => {
+    res.pusj(StarsInSector([i, j]));
+  }))
+  return res;
+}
+
 //Random Generator
 let RNG = new Chance()
 
 //distribution function for spreading stars using normal distribution
-const Distribute = (dev)=>{
+const Distribute = (dev) => {
   return RNG.normal({
     dev
   })
@@ -41,8 +94,8 @@ const Distribute = (dev)=>{
 /*
   Display to canvas 
 */
-const Clear = ()=>{
-  let {clientWidth, clientHeight} = document.getElementById("starryHost")
+const Clear = () => {
+  let { clientWidth, clientHeight } = document.getElementById("starryHost")
   canvas.width = clientWidth
   canvas.height = clientHeight
   let ctx = canvas.getContext('2d');
@@ -53,30 +106,21 @@ const Clear = ()=>{
     clientHeight
   }
 }
-const Display = ()=>{
-	//calculate Allowable sectors for population 
-	Allowable = []
-	_.fromN(2 * R/50, (i)=>_.fromN(2 * R/50, (j)=>{
-		let sis = StarsInSector([i,j])
-		if(sis.p > 0.001){
-			Allowable.push([i,j])
-		}
-	}))
-
-	//determine bounds 
-	let[xmin,ymin,xmax,ymax] = BBox
-  let {ctx, clientWidth, clientHeight} = Clear()
-	//figure out how to scale based upon minimum 
-	let mScale = clientWidth < clientHeight ? clientWidth : clientHeight
-	mScale /= 2*R
+const Display = () => {
+  //determine bounds 
+  let [xmin, ymin, xmax, ymax] = BBox
+  let { ctx, clientWidth, clientHeight } = Clear()
+  //figure out how to scale based upon minimum 
+  let mScale = clientWidth < clientHeight ? clientWidth : clientHeight
+  mScale /= 2 * R * 0.99
 
   //have to adjust for canvas size
   for (let i = 0; i < Points.length; i += 1) {
-    let[_x,_y,color='white'] = Points[i]
+    let [_x, _y, color = 'white'] = Points[i]
     ctx.fillStyle = color;
 
-    let x = clientWidth / 2 + ((_x-R)*mScale)+ xmin/2
-    let y = clientHeight / 2 + ((_y-R)*mScale)
+    let x = clientWidth / 2 + ((_x - R) * mScale) //-xmin  
+    let y = clientHeight / 2 + ((_y - R) * mScale)
     ctx.fillRect(x, y, 1, 1);
   }
 }
@@ -84,7 +128,7 @@ const Display = ()=>{
 /*
   Make an Individual Star 
 */
-const MakeStar = (j,dev,color)=>{
+const MakeStar = (j, dev, color) => {
   let center = [R, R]
   // Set location of star in context of arm
   const armMiddle = armRadius / 2;
@@ -102,48 +146,38 @@ const MakeStar = (j,dev,color)=>{
   const rotatedY = xCenterRemoved * Math.sin(rotationAmount) + yCenterRemoved * Math.cos(rotationAmount);
 
   //final points - add jitter 
-  let p = [rotatedX + center[0], rotatedY + center[1]].map(pi=>pi * RNG.randBetween(985, 1015) / 1000)
-  _.fromN(2, (i)=>{
+  let p = [rotatedX + center[0], rotatedY + center[1]].map(pi => pi * RNG.randBetween(985, 1015) / 1000)
+  _.fromN(2, (i) => {
     let mi = i + 2
     BBox[i] = p[i] < BBox[i] ? p[i] : BBox[i]
     BBox[mi] = p[i] > BBox[mi] ? p[i] : BBox[mi]
   }
   )
 
-  //sector 
-  let sxy = p.map(pi=>Math.floor(pi / 50)).join()
-  if (!Sectors.includes(sxy)) {
-    Sectors.push(sxy)
-  }
-
   p.push(color)
   Points.push(p)
 }
 
-const BuildHost = ()=>{
+const BuildHost = () => {
   if (Points.length > 20000) {
-    return
+    return clearInterval(buildHostInterval);
   }
   //1000 stars of varying color 
-  _.fromN(armCount, ()=>{
+  _.fromN(armCount, () => {
     let _sC = RNG.weighted([0, 1, 2, 3, 4, 5, 6], [0.0001, 0.2, 1, 3, 8, 12, 20])
     let color = starTypeData[SPECTRAL[_sC]].color
-    _.fromN(1000 / armCount, (j)=>MakeStar(j, 1.5, color))
+    _.fromN(1000 / armCount, (j) => MakeStar(j, 1.5, color))
   }
   )
-  //update gaalxy 
-  //let _as = Galaxy._availableSectors = Sectors.map(sid=>sid.split(",").map(Number))
-  //_as.forEach(id=>Galaxy._sectors.set(id.join(), new MajorSector(Galaxy,id)))
   //display 
-  Display()
+  Display();
 }
 
 /*
   Intial Galaxy Fill
 */
-const FillGalaxy = (G)=>{
+const FillGalaxy = (G) => {
   //clear and establish for use in other functions 
-  Sectors = []
   Points = []
   canvas = document.getElementById("starryHost");
   Galaxy = G
@@ -158,25 +192,25 @@ const FillGalaxy = (G)=>{
 
   let starsPerArm = Math.floor(starCount / armCount);
   //loop through arms an populate with stars 
-  _.fromN(armCount, ()=>{
+  _.fromN(armCount, () => {
     //from widest distribution to least
-    _.fromN(starsPerArm * 0.15, (j)=>MakeStar(j, 5))
-    _.fromN(starsPerArm * 0.25, (j)=>MakeStar(j, 1.5))
-    _.fromN(starsPerArm * 0.15, (j)=>MakeStar(j, 1))
-    _.fromN(starsPerArm * 0.1, (j)=>MakeStar(j, 0.6))
-    _.fromN(starsPerArm * 0.15, (j)=>MakeStar(j, 0.4))
-    _.fromN(starsPerArm * 0.2, (j)=>MakeStar(j, 0.2))
+    _.fromN(starsPerArm * 0.15, (j) => MakeStar(j, 5))
+    _.fromN(starsPerArm * 0.25, (j) => MakeStar(j, 1.5))
+    _.fromN(starsPerArm * 0.15, (j) => MakeStar(j, 1))
+    _.fromN(starsPerArm * 0.1, (j) => MakeStar(j, 0.6))
+    _.fromN(starsPerArm * 0.15, (j) => MakeStar(j, 0.4))
+    _.fromN(starsPerArm * 0.2, (j) => MakeStar(j, 0.2))
   }
   )
   //do center bulge and galaxy scatter 
-  _.fromN(2500, ()=>{
+  _.fromN(2500, () => {
     let r = R * Math.abs(Distribute(0.1))
     let phi = RNG.randBetween(1, 360)
     Points.push([R + r * Math.cos(phi), R + r * Math.sin(phi)])
   }
   )
-  _.fromN(2500, ()=>{
-    let r = R * Math.abs(Distribute(1)) / 3
+  _.fromN(0, () => {
+    let r = R * Math.abs(Distribute(0.35)) / 3
     let phi = RNG.randBetween(1, 360)
     Points.push([R + r * Math.cos(phi), R + r * Math.sin(phi)])
   }
@@ -185,74 +219,15 @@ const FillGalaxy = (G)=>{
   Display()
 
   //every 2s add colored stars 
-  buildHostInterval = setInterval(()=>BuildHost(), 2000);
+  buildHostInterval = setInterval(() => BuildHost(), 2000);
 }
 
-const StarsInSector = ([sx,sy]) => {
-	let points = Points.filter(([px,py])=>Math.floor(px/50)==sx && Math.floor(py/50)==sy)
-	return {
-		points,
-		p : points.length/Points.length
-	}
+const StarsInSector = ([sx, sy]) => {
+  let points = Points.filter(([px, py]) => Math.floor(px / 50) == sx && Math.floor(py / 50) == sy)
+  return {
+    points,
+    p: points.length / Points.length
+  }
 }
 
-export {FillGalaxy, Display, Sectors, StarsInSector, Allowable, BBox}
-
-/*
-  Failed to implement well 
-			A New Formula Describing the Scaffold Structure of Spiral Galaxies 
-			Harry I. Ringermacher 
-			Lawrence R. Mead 
-
-			r = (phi)=>A / Math.log(B * Math.tan(phi / (2 * N)))
-			phi = 2*N*Math.atan(Math.exp(A/r)/B)
-
-			//in termps of spiral  PHI
-			rP = (phi)=>R / (1 - PHI * Math.tan(PHI) * Math.log10(phi / PHI))
-*/
-
-/*
-
-      let spiral = svg.group().attr('id', 'spiral')
-      let rpr = _.fromN(1000, ()=>[_.clamp(Math.abs(chance.normal({
-        dev: 0.2
-      })), 0, 3), chance.random() * 2 * Math.PI]).concat(_.fromN(750, ()=>[chance.random() * 3, -1]))
-
-      while (rpr.length < 3000) {
-        let _r = Math.abs(chance.normal({
-          dev: 2
-        })) / 2
-        if (_r < 0.5) {
-          continue;
-        }
-        rpr.push([_.clamp(_r, 0, 3), -1])
-      }
-
-      let A = 1
-        , N = 0.5 + (5 * chance.random())
-        , B = 0.5 + (5 * chance.random())
-      let phi = (r)=>2 * N * Math.atan(Math.exp(A / r) / B)
-      rpr.forEach(([r,p],i)=>{
-        // between -3 and 3 
-        let _p = p == -1 ? phi(r) + (i % 2 == 0 ? Math.PI : 0) : p
-        let pd = _p * 360 / (2 * Math.PI)
-        //degrees 
-
-        //jitter for r 
-        r += p == -1 ? chance.normal() * 0.15 : 0
-        //polar conversion 
-        let cx = r * Math.cos(_p)
-        let cy = r * Math.sin(_p)
-        let sp = svg.circle(0.02).attr({
-          cx,
-          cy
-        }).fill("white").addClass('spiral').data({
-          r,
-          pd
-        })
-        spiral.add(sp)
-
-      }
-      )
-
-*/
+export { FillGalaxy, Display, getStarsInSector, StarsInSector, BBox }

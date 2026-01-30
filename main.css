@@ -4,10 +4,12 @@ body {
   height: 100%;
   margin: 0;
   padding: 0;
-  background: url( '../img/BlueNebular_back.jpg' ) no-repeat;
+  background: url('../BlueNebular_back.jpg') no-repeat;
 }
 
-h1, h2, h3 {
+h1,
+h2,
+h3 {
   font-family: "MedievalSharp", sans-serif;
 }
 
@@ -26,33 +28,6 @@ h1, h2, h3 {
   color: gold;
 }
 
-.blades-rep {
-  cursor: pointer;
-  display: inline-block;
-  width: 0.5em;
-  height: 2em;
-  border: 0.1rem solid;
-  margin: 0px 1px;
-}
-
-.blades-tier {
-  cursor: pointer;
-  display: inline-block;
-  width: 1em;
-  height: 1em;
-  border-radius: 50%;
-  border: 0.1rem solid;
-  margin: 0px 1px;
-}
-.blades-res {
-  cursor: pointer;
-  display: inline-block;
-  width: 0.75em;
-  height: 0.75em;
-  border: 0.1rem solid;
-  margin: 0px 1px;
-}
-
 .d-circle-sm {
   display: inline-block;
   width: 0.5em;
@@ -66,12 +41,20 @@ h1, h2, h3 {
   touch-action: none;
 }
 
-#map .system {
-  background: white;
+#map .claim {
+  stroke: none;
+  cursor: pointer;
 }
 
+#map .claim:hover {
+  stroke: white;
+  stroke-width: 1;
+}
+
+#map .system {}
+
 #map.galaxy {
-  background: url( '../img/verse-galaxy.jpg' ) no-repeat;
+  background: url('../img/verse-galaxy.jpg') no-repeat;
   background-position: center;
   background-size: contain;
 }
@@ -80,77 +63,79 @@ h1, h2, h3 {
   cursor: pointer;
   fill: white;
   fill-opacity: 0;
-  stroke : white;
-  stroke-opacity: 0.5;
+  stroke: white;
+  stroke-opacity: 1;
 }
 
 .majorSector:hover {
-  stroke-width : 30;
+  stroke-width: 30;
   stroke-opacity: 1;
   fill-opacity: 0.5;
 }
 
 .grid {
   fill: black;
-  fill-opacity: 1;
-  stroke : white;
-  stroke-width : 5;
+  fill-opacity: 0.33;
+  stroke: white;
+  stroke-width: 0.25;
   stroke-opacity: 0.5;
 }
 
-.claim {
+.quiet {
   cursor: pointer;
-  fill-opacity: 0.5;
+  fill-opacity: 0.33;
 }
 
-.star, .poi {
+.star,
+.poi {
   cursor: pointer;
 }
 
-.star:hover, .poi:hover {
+.star:hover,
+.poi:hover {
   stroke: blue;
-  stroke-width : 5;
+  stroke-width: 1;
   stroke-opacity: 1;
 }
 
 .planet {
   cursor: pointer;
   stroke: Aqua;
-  stroke-width : 1;
+  stroke-width: 1;
   stroke-opacity: 0.5;
 }
 
-.planet:hover{
-  stroke-width : 5;
+.planet:hover {
+  stroke-width: 5;
   stroke-opacity: 1;
 }
-  
+
 .gasGiant {
   fill-opacity: 0.70;
 }
 
 #planetoid {
   stroke: Aqua;
-  stroke-width : 3;
+  stroke-width: 3;
 }
 
 .gasGiant .poly {
   fill-opacity: 0;
   stroke: black;
-  stroke-width : 1;
+  stroke-width: 1;
   stroke-opacity: 0.25;
 }
-  
+
 .poly:hover {
   stroke: white;
-  stroke-width : 2;
+  stroke-width: 2;
   stroke-opacity: 1;
 }
 
 .hex {
   fill: white;
   fill-opacity: 0;
-  stroke : white;
+  stroke: white;
   stroke-opacity: 0.5;
 }
 
@@ -163,11 +148,18 @@ h1, h2, h3 {
   transform: rotate(90deg);
 }
 
+/* Lil GUI */
+.lil-gui {
+  --font-size: 1em;
+  --input-font-size: 1em;
+}
+
 /* Tooltip container */
 .tooltip {
   position: relative;
   display: inline-block;
-  border-bottom: 1px dotted black; /* If you want dots under the hoverable text */
+  border-bottom: 1px dotted black;
+  /* If you want dots under the hoverable text */
 }
 
 /* Tooltip text */
@@ -179,7 +171,7 @@ h1, h2, h3 {
   text-align: center;
   padding: 5px 0;
   border-radius: 6px;
- 
+
   /* Position the tooltip text - see examples below! */
   position: absolute;
   z-index: 1;
@@ -226,4 +218,3 @@ h1, h2, h3 {
 .dropdown:focus .dropdown-content {
   display: block;
 }
-

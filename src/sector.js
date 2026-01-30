@@ -1,523 +1,361 @@
-import {RandBetween, SumDice, Likely, Difficulty, ZeroOne, Hash, BuildArray, SpliceOrPush, DiceArray, WeightedString, capitalize, chance} from './random.js'
+import { MakeName } from './randomName.js';
 
-import {starTypeData, gravity, blackbody, planetTypeData} from './astrophysics.js';
-import {random_name, isBadWord} from './random_name.js';
+import { SolarSystemGenerator } from './starSystem.js';
 
-import {Animals, Oddities, Elements, Magic} from './data.js';
-import {Ancients, CreateAncient} from './ancients.js';
-import {Claim} from './people.js';
 
 /*
   Isometric 
 */
 
-const toIsometric = (_x,_y,_z)=>{
-  return {
-    x: (_x - _y) * 0.866025,
-    y: _z + (_x + _y) * 0.5
-  }
+const toIsometric = (_x, _y, _z) => {
+    return {
+        x: (_x - _y) * 0.866025,
+        y: _z + (_x + _y) * 0.5
+    }
 }
 
 /*
-  POI
+  Sector Class 
 */
-const POI = ['creature', 'obstacle', 'hazard', 'site', 'factionOutpost']
-const CreatePOI = {
-  creature(s, RNG=chance) {
-    let what = RNG.weighted(['animal', 'robot'], [2, 1])
-    s[s._POI] = {
-      what,
-      text : `Creature [${what}]`
-    }
-  },
-  obstacle(s, RNG=chance) {
-    let what = RNG.pickone(['defensive', 'impeniterable', 'difficult', 'hazardous'])
-    let data = {
-      what
-    }
-    if (what == 'defensive') {
-      data.ancient = RNG.pickone(s.parent.ancients.flat())
-    }
-
-    data.text = `Obstacle [${what}${what == 'defensive' ? ": "+data.ancient.name : ""}]`
-
-    s[s._POI] = data
-  },
-  hazard(s, RNG=chance) {
-    let what = RNG.pickone(['unseen danger', 'ensnaring', 'defensive', 'impairing', 'difficult'])
-    let data = {
-      what
-    }
-    if (what == 'defensive') {
-      data.ancient = RNG.pickone(s.parent.ancients.flat())
-    }
-
-    data.text = `Hazard [${what}${what == 'defensive' ? ": "+data.ancient.name : ""}]`
-
-    s[s._POI] = data
-  },
-  site(s, RNG=chance) {
-    let what = RNG.weighted(['Ruin', 'Dwelling', 'Outpost', 'Landmark', 'Resource'], [2, 1, 1, 1, 1])
-    let data = {
-      what
-    }
-
-    if (what == 'Ruin') {
-      data.ancient = RNG.pickone(s.parent.ancients.flat())
-      data.type = RNG.weighted(['necropolis', 'temple', 'mine', 'military', 'settlement'], [1, 2, 2, 1, 4])
-    }
-    if (what == 'Dwelling') {
-      data.type = RNG.pickone(['common', 'criminal', 'revolutionary', 'recreation', 'mercenary', 'religious', 'craft', 'trade', 'industrial', 'foreign', 'academic'])
-    }
-    if (what == 'Outpost') {
-      data.type = RNG.pickone(['Trading Post', 'Industrial Site', 'Relay', 'Gate'])
-    }
-    if (what == 'Landmark') {
-      data.type = RNG.pickone(['Pulsar', 'Black Hole', 'Nebula', 'Gate'])
-    }
-    if (what == 'Resource') {
-      data.type = RNG.weighted(['uncommon', 'rare', 'very rare'], [3, 1.5, 0.5])
-    }
-
-    if(['Relay','Gate'].includes(data.type)){
-      data.ancient = RNG.pickone(s.parent.ancients.flat())
-    }
-
-    data.text = `${what} [${data.type}${data.ancient ? ", "+data.ancient.name : ""}]`
-
-    s[s._POI] = data
-  },
-  factionOutpost(s, RNG=chance) {
-    //faction presence, link to faction - don't care about distance 
-    let f = RNG.pickone(s.parent.factions)
-    s.claim = f.id
-    let type = RNG.pickone(['common', 'recreation', 'military', 'religious', 'craft', 'trade', 'industrial', 'academic'])
-    let state = RNG.weighted(['failing', 'nascent', 'stable', 'expanding', 'dominating'], [3, 2, 4, 2, 1])
-
-    s[s._POI] = {
-      f,
-      what: 'faction',
-      type,
-      state,
-      text: `Faction Outpost [${f.name}, ${type}, ${state}]`
-    }
-  },
-}
-
-/*
-  Planets 
-*/
-
-class Planet {
-  constructor(seed, i, orbitalRadius, insolation) {
-    this.seed = seed
-    this.i = i
-    //romanNumeral(i + 1)
-    this._orbitalRadius = orbitalRadius;
-    // AU
-    this._insolation = insolation;
-    // Earth incident radiation from Sol == 1
-
-    let RNG = new Chance(seed)
-    RNG.range = (min,max)=>min + RNG.random() * (max - min)
-
-    //planet template 
-    let template = this.template = RNG.weighted(planetTypeData, [insolation * 100, 10, 1]);
-
-    //calculations 
-    this.classification = template.classification;
-    this.radius = RNG.range(template.radius[0], template.radius[1]);
-    this.density = RNG.range(template.density[0], template.density[1]);
-    this.hydrographics = template.hydrographics(RNG, insolation, this.radius, this.density);
-    this.atmosphere = template.atmosphere(RNG, insolation, this.radius, this.density, this.hydrographics);
-
-    Object.assign(this, this.template.HI(this._insolation, this.radius, this.density, this.hydrographics, this.atmosphere))
-
-    return this;
-  }
-  get gravity() {
-    return gravity(this.radius, this.density)
-  }
-
-  detail() {
-    detail.orbitalRadius = this.orbitalRadius.toFixed(2);
-    detail.insolation = this.insolation.toFixed(2);
-    detail.blackbodyK = blackbody(this.insolation);
-  }
-}
-
-//generating a system based upon a seed 
-class System {
-  constructor(parent, i) {
-    this.parent = parent
-    this.seed = [parent.seed, i].join(".")
-    this.i = i
-    this.claim = -1
-    
-    let RNG = new Chance(this.seed)
-
-    //ofset from edge of grid 
-    //this.offset = BuildArray(3, ()=> parent.GRIDSIZE * RandBetween(20, 80, RNG) / 100)
-    this.offset = [0, 0, 0]
-
-    //star detail 
-    let star = {}
-      , spectralClass = RNG.weighted(["O", "B", "A", "F", "G", "K", "M"], [0.0001, 0.2, 1, 3, 8, 12, 20])
-      , spectralIndex = RandBetween(0, 9, RNG)
-      , stellarTemplate = starTypeData[spectralClass];
-
-    star.spectralType = spectralClass + spectralIndex;
-    star.luminosity = stellarTemplate.luminosity * (4 / (spectralIndex + 2));
-    star.template = stellarTemplate;
-    this.star = star
-
-    //radius 
-    var s = Math.log(star.luminosity) + 8;
-    s = Math.max(Math.min(s, 20), 2);
-    this._r = s;
-
-    //color 
-    this._color = star.template.color
-
-    let range = (min,max)=>min + RNG.random() * (max - min)
-
-    //planets 
-    let numberOfPlanets = RandBetween(...stellarTemplate.planets, RNG)
-      , radius_min = 0.4 * range(0.5, 2)
-      , radius_max = 50 * range(0.5, 2)
-      , total_weight = (Math.pow(numberOfPlanets, 2) + numberOfPlanets) * 0.5
-      , pr = radius_min
-      , _planets = [];
-
-    for (var i = 0; i < numberOfPlanets; i++) {
-      pr += i / total_weight * range(0.5, 1) * (radius_max - radius_min);
-      _planets.push(new Planet([this.seed, i].join("."),i,pr,star.luminosity / Math.pow(pr, 2)))
-    }
-    this._planets = _planets;
-
-    let list = _planets.map(p=>p.HI).sort();
-    this._habitability = list.length ? list.shift() : 5;
-  }
-  get point() {
-    let G = 1
-    // this.parent.GRIDSIZE
-    let g = this.parent._grid[this.i]
-    return g.map((p,i)=>(p * G) + this.offset[i])
-    //- this.parent.SECTORSIZE/2
-  }
-  distance(s) {
-    let pi = this.point
-    let pj = s.point
-
-    let d2 = pj.map((p,i)=>(p - pi[i]) * (p - pi[i])).reduce((s,v)=>s + v, 0)
-    return Math.sqrt(d2)
-  }
-  get faction () {
-    return this.claim > -1 ? this.parent.factions.find(f=> f.id == this.claim) : null
-  }
-  get nearestFactionSystem () {
-    return this.parent.systems.filter(s => s.claim>-1).map(s => [s,this.distance(s)]).sort((a,b)=> a[1]-b[1])[0][0]
-  }
-  get POI() {
-    return this._POI ? this[this._POI] : this._POI
-  }
-  get name() {
-    return this.parent.names[this.i]
-  }
-  get UIColor() {
-    return ["green", "blue", "yellow", "red", "black"][this._habitability - 1]
-  }
-  randomEvent () {
-    
-  }
-}
 
 class Sector {
-  constructor(app, G={}, sp=RandomStart()) {
-    this.app = app
-    this.parent = G
+    constructor(opts = {}) {
+        this.what = "Sector"
+        this.filter = "All"
 
-    this._seed = G.seed || chance.natural()
-    this.sp = sp
+        //sector id - x,y
+        this.id = opts.id || [0, 0, 0];
+        let _id = this.id.join();
 
-    this.seed = [this._seed, sp.join(",")].join(".")
+        //seed for randomization 
+        this._seed = opts.seed || 0;
+        //seed for RNG 
+        this.seed = [App.galaxy.seed, _id, this._seed].join(".");
 
-    this.names = []
-    this.systems = []
-    this.factions = []
+        //establish random gen 
+        let RNG = new Chance(this.seed)
 
-    let RNG = new Chance(this.seed)
+        let alignment = this.alignment = "neutral"
+        let alMod = [5, 3, 0, -3, -5][['chaotic', 'evil', 'neutral', 'good', 'lawful'].indexOf(alignment)]
+        let sR = RNG.d12() + alMod
+        this.safety = sR <= 1 ? ["safe", 3] : sR <= 3 ? ["unsafe", 2] : sR <= 9 ? ["dangerous", 1] : ["perilous", 0]
 
-    //ancients present 
-    this._ancients = RNG.shuffle(Ancients).slice(0, 2)
-    this._ancients[0] = this.withinClaim ? this.withinClaim.ancient : this._ancients[0]
+        //core systems 
+        // Check if it's a claimed sector (Ancient, Celestial, or Independent)
+        const claim = this.claim = opts.claim || "Unclaimed";
+        let cG = ["Xothian", "Gray Syndicate", "Echani Reach", "Hegemony", "Mi-Go Primacy"].includes(claim) ? "Ancient" : null;
+        cG = cG || (["Archilect", "Archon", "Elysian", "Solari"].includes(claim) ? "Celestial" : null);
+        cG = cG || (["Ascendancy", "Collective", "Dominion", "Mazani", "Venar"].includes(claim) ? "Independent" : null);
+        this.claimGroup = cG || "Unclaimed";
 
-    //make a name and reject badwords 
-    let makeName = ()=>{
-      var number_of_syllables = Math.floor(RNG.random() * 2 + 2), new_name;
-      //generate a unique name without badwords
-      while (true) {
-        new_name = random_name(RNG, number_of_syllables);
-        if (this.names.indexOf(new_name) >= 0 || isBadWord(new_name)) {} else {
-          break;
+        //color based on faction
+        this.color = App.FactionColors[claim] || "white";
+        // Claimed sectors: 20-100 core systems
+        // Unclaimed sectors: half of claimed sectors
+        this.nCore = cG != "Unclaimed" ? RNG.integer({ min: 20, max: 100 }) : RNG.integer({ min: 10, max: 50 });
+
+        // Generate core systems
+        this.#generateCoreSystems();
+    }
+
+    /**
+     * Generate core systems using SolarSystemGenerator
+     * Implements Core Systems rules from sectors.md
+     */
+    #generateCoreSystems() {
+        const systems = [];
+        const { claim, claimGroup, nCore } = this;
+
+        //establish random gen 
+        let RNG = new Chance(`${this.seed}-systems`)
+
+        this._names = [];
+        this._systems = [];
+
+        //number of Core systems 
+        for (let i = 0; i < this.nCore; i++) {
+            MakeName(this._names, RNG);
+            let name = this._names[i];
+
+            // Create a unique seed for each system
+            const systemSeed = `${this.seed}-system-${i}`;
+
+            // Generate x,y,z position within sector (-500.0 to +500.0 ly)
+            const position = {
+                x: RNG.floating({ min: -500.0, max: 500.0, fixed: 2 }),
+                y: RNG.floating({ min: -500.0, max: 500.0, fixed: 2 }),
+                z: RNG.floating({ min: -500.0, max: 500.0, fixed: 2 })
+            };
+
+            // Determine system type and claim based on sector claim
+            let systemClaim = claim;
+            let systemType = "primary";
+            let isHabitable = true;
+            let techLevel = 4;
+            let panhumanStatus = "Free / Thriving";
+
+            if (claim !== "Unclaimed") {
+                // In claimed sectors, all core systems belong to claiming faction
+                systemClaim = claim;
+                if (claimGroup === "Ancient") {
+                    // In ancient sectors, determine primary vs managed
+                    systemType = this.chance.bool({ likelihood: 20 }) ? "primary" : "managed";
+                    techLevel = 4; // Ancients TL5, thralls TL4
+                    panhumanStatus = "Enslaved / Suppressed";
+                } else if (claimGroup === "Celestial") {
+                    systemType = "primary";
+                    techLevel = 5;
+                    panhumanStatus = "Free / Thriving";
+                } else if (claimGroup === "Independent") {
+                    systemType = "primary";
+                    techLevel = 4;
+                    panhumanStatus = "Free / Thriving";
+                }
+            } else if (claim === "Unclaimed") {
+                // Unclaimed sector: use percentages from sectors.md
+                const roll = RNG.integer({ min: 1, max: 100 });
+
+                if (roll <= 30) {
+                    // 30% Ancient settlement
+                    systemClaim = RNG.pickone(["Xothian", "Gray Syndicate", "Echani Reach", "Hegemony", "Mi-Go Primacy"]);
+                    systemType = RNG.bool({ likelihood: 10 }) ? "primary" : "managed";
+                    techLevel = 4;
+                    panhumanStatus = "Enslaved / Suppressed";
+                } else if (roll <= 35) {
+                    // 5% - 2+ Ancient settlements (we'll mark as multi-ancient)
+                    systemClaim = RNG.pickone(["Xothian", "Gray Syndicate", "Echani Reach", "Hegemony", "Mi-Go Primacy"]);
+                    systemType = "multi-ancient";
+                    techLevel = 4;
+                    panhumanStatus = "Contested / Suppressed";
+                } else if (roll <= 40) {
+                    // 5% - open conflict between 2-3 Ancient factions
+                    systemClaim = "Ancient Conflict";
+                    systemType = "conflict";
+                    techLevel = 4;
+                    panhumanStatus = "War-torn";
+                } else if (roll <= 50) {
+                    // 10% Celestial settlement
+                    systemClaim = RNG.pickone(["Archilect", "Archon", "Elysian", "Solari"]);
+                    systemType = "primary";
+                    techLevel = 5;
+                    panhumanStatus = "Free / Thriving";
+                } else if (roll <= 60) {
+                    // 10% feral/independent + Celestial guardian
+                    systemClaim = "Celestial Guardian";
+                    systemType = "guarded";
+                    techLevel = 3;
+                    panhumanStatus = "Free but Monitored";
+                } else {
+                    // 40% feral/independent settlement
+                    systemClaim = "Independent";
+                    systemType = "feral";
+                    techLevel = RNG.pickone([0, 1, 2, 3]);
+                    panhumanStatus = "Free / Feral";
+                }
+            }
+
+            // Generate the system
+            const systemGenerator = new SolarSystemGenerator({
+                seed: systemSeed,
+                starType: "random",
+                isBinary: "random",
+                isHabitable: isHabitable,
+            });
+
+            const system = systemGenerator.generate();
+
+            // Add sector-specific metadata
+            system.name = name;
+            system.position = position;
+            system.sectorIndex = i;
+            system.isCoreSystem = true;
+            system.claim = systemClaim;
+            system.systemType = systemType; // primary, managed, feral, guarded, multi-ancient, conflict
+            system.techLevel = techLevel;
+            system.panhumanStatus = panhumanStatus;
+
+            this._systems.push(system);
         }
-      }
-      this.names.push(new_name);
     }
 
-    //number of systems 
-    let ns = 900 + RNG.d100() + RNG.d100()
-    //create all grid ids possilbe 
-    this.SECTORSIZE = 50
-    this.GRIDSIZE = 5
-    const gridids = BuildArray(10, (_,i)=>BuildArray(10, (_,j)=>BuildArray(10, (_,k)=>[i, j, k]))).flat(2)
-    //shuffle them to get the random placement of points 
-    //this._grid = RNG.shuffle(gridids).concat(RNG.shuffle(gridids)).slice(0, ns)
-    this._grid = []
-
-    for (let i = 0; i < ns; i++) {
-      this._grid.push(BuildArray(3, ()=>RandBetween(0, this.SECTORSIZE * 1000, RNG) / 1000))
-      makeName()
-      this.systems.push(new System(this,i))
-    }
-
-    const COLORS = ["white", "maroon", "salmon", "pink", "tan", "olive", "goldenrod", "lime", "green", "teal", "aquamarine", "navy", "steelblue", "fuchsia", "purple"]
-    let colors = RNG.shuffle(COLORS).concat(RNG.shuffle(COLORS))
-
-    //get major factions at habitable worlds 
-    this._major = []
-    this.systems.filter(s=>s._habitability == 1).forEach(s=>{
-      Claim(s, colors[this._major.length], RNG)
-      this._major.push(s.i)
-    }
-    )
-
-    //create lesser factions at suitable worlds and create POI at others 
-    this.systems.forEach(s=>{
-      let hi = s._habitability
-      if (hi == 2) {
-        Claim(s, RNG.pickone(COLORS), RNG)
-      } else if (hi > 2) {
-        //['creature','obstacle','hazard','site','faction']
-        s._POI = RNG.bool() ? RNG.weighted(POI, [2, 1, 2, 4, 1]) : null
-      }
-    }
-    )
-
-    //establish/generate POI 
-    this.systems.forEach(s=>CreatePOI[s._POI] ? CreatePOI[s._POI](s, new Chance(s.seed + ".POI")) : null)
-
-    console.log(this)
-  }
-  get wormhole () {
-    let p = ['A',this.sp].join()
-    let w = this.parent._wormholes.filter(([a,b]) => p == a.join() || p == b.join())
-    return w.length > 0 ? w[0] : null
-  }
-  get withinClaim() {
-    let sp = this.sp
-    //find if within 
-    let c = this.parent.ancientClaims.filter(_c=>{
-      let dx = _c.position.x - sp[0]
-      let dy = _c.position.y - sp[1]
-      return Math.sqrt(dx * dx + dy * dy) < _c.radius
-    }
-    )
-
-    return c.length == 0 ? null : c[0]
-  }
-  get galaxy() {
-    return this.parent
-  }
-  get ancients() {
-    let others = this.factions.filter(f=>f.what == 'alien' && typeof f._people !== "string")
-    return this._ancients.map(id=>{
-      return this.factions.filter(f=>f._people == id)
-    }
-    ).concat(others)
-  }
-  get POI() {
-    //create object 
-    let poi = Object.fromEntries(POI.map(p=>[p, []]))
-    //reduce poi into object
-    return this.systems.filter(s=>s._POI).reduce((all,s)=>{
-      all[s._POI].push(Object.assign({
-        s
-      }, s.POI))
-      return all
-    }
-    , poi)
-  }
-  get showSystems () {
-    let hab = ["Earthlike", "Survivable"]
-    let poi = ["Ruins", "Gates", "Resources", "Outposts", "Dwellings", "Landmarks"]
-    //["All","Earthlike", "Survivable", "Factions", "Ruins", "Gates", "Resources", "Outposts", "Dwellings", "Landmarks"]
-    let filter = this.app.state.filterSystem
-
-    let res = []
-    
-    if(hab.includes(filter)) {
-      res = this.systems.filter(s => s._habitability == hab.indexOf(filter)+1)
-    }
-    else if (filter == "Factions") {
-      res = this.systems.filter(s=> s.claim > -1)
-    }
-    else if (poi.includes(filter)) {
-      let what = filter.slice(0,-1)
-      res = this.systems.filter(s => s.POI && (s.POI.what == what || s.POI.type == what))
-    }
-    else {
-      res = this.systems
-    }
-
-    return res.sort((a,b)=> a.name<b.name ? -1 : 1)
-  }
-  display3d() {
-    const canvas = document.getElementById("renderCanvas");
-    let engine = this.app.engine
-    // This creates a basic Babylon Scene object (non-mesh)
-    var scene = new BABYLON.Scene(engine);
-
-    // This creates and positions a free camera (non-mesh)
-    const camera = new BABYLON.ArcRotateCamera("Camera",0,0,10,new BABYLON.Vector3(0,0,0),scene);
-
-    // This targets the camera to scene origin
-    camera.setTarget(BABYLON.Vector3.Zero());
-
-    // This attaches the camera to the canvas
-    camera.attachControl(canvas, true);
-
-    // This creates a light, aiming 0,1,0 - to the sky (non-mesh)
-    var light = new BABYLON.HemisphericLight("light",new BABYLON.Vector3(0,1,0),scene);
-
-    // Default intensity is 1. Let's dim the light a small amount
-    light.intensity = 0.7;
-
-    //One 'sphere' for systems.
-    var sphere = BABYLON.MeshBuilder.CreateSphere("sphere", {
-      diameter: 0.2,
-      segments: 32,
-      updatable: true
-    });
-
-    this.systems.forEach((s,i)=>{
-      let _star = sphere.clone("star." + i);
-      _star.position = new BABYLON.Vector3(...s.point);
-      //scale 
-      _star.scaling = new BABYLON.Vector3(...BuildArray(3, ()=>0.5 * s._r))
-    }
-    )
-
-    sphere.setEnabled(false)
     /*
-    // Our built-in 'ground' shape.
-    var ground = BABYLON.MeshBuilder.CreateGround("ground", {
-      width: 6,
-      height: 6
-    }, scene);
-    */
+      add a system to the sector
+      TODO: Used for non-core systems like outposts, ruins, etc.
+      */
+    addSystem(opts = {}) { }
 
-    this.app.scene = scene;
-  }
-  galaxyDisplay() {
-    if (SVG('g')) {
-      SVG.find('g').remove()
+    //get habitable systems
+    get habitable() {
+        return this.systems.map(s => s.habitablePlanets);
     }
 
-    let app = this.app
-    let svg = this.app.svg
-
-    let claimmap = svg.group().attr('id', 'claimmap')
-    this.parent.ancientClaims.forEach((c,i)=>{
-      let p = c.position
-
-      let _claim = svg.circle(c.radius).attr({
-        cx: p.x,
-        cy: p.y
-      }).addClass('claim').data({
-        c
-      }).click(async function() {
-        let c = this.data("c")
-        console.log(c)
-      })
-
-      claimmap.add(_claim)
+    get systems() {
+        return Object.values(this._systems);
     }
-    )
 
-    //size 
-    let {x, y, height, width} = claimmap.bbox()
-    //viewbox
-    svg.attr('viewBox', [x, y, width, height].join(" "))
-  }
-  display() {
-    let app = this.app
-    let svg = SVG().addTo('.container').size('800', '800')
-    let systems = this.showSystems
+    showSystems(filter) {
+        //["All","Earthlike", "Survivable", "Factions", "Ruins", "Gates", "Resources", "Outposts", "Dwellings", "Landmarks"]
 
-    let isometric = app.state.isometric == 'Isometric'
+        let hab = ["Earthlike", "Survivable"]
+        let poi = ["Settlements", "Ruins", "Gates", "Resources", "Outposts", "Dwellings", "Landmarks"]
+        let res = []
 
-    let SECTORSIZE = 50
-    //ly
-    let PIXELSCALE = 20
-    let GRIDCOUNT = 10
-
-    let grid = SECTORSIZE * PIXELSCALE / GRIDCOUNT
-    let mid = PIXELSCALE * SECTORSIZE / 2
-    //create the grid 
-    let gridmap = svg.group().attr('id', 'gridmap')
-    for (let i = 0; i < 10; i++) {
-      for (let j = 0; j < 10; j++) {
-        let xyz = [[i * grid, j * grid, mid], [i * grid + grid, j * grid, mid], [i * grid + grid, j * grid + grid, mid], [i * grid, j * grid + grid, mid]].map(_xyz=>{
-          let {x, y} = isometric ? toIsometric(..._xyz) : {
-            x: _xyz[0],
-            y: _xyz[1]
-          }
-          return [x, y].join(",")
+        if (filter == "Modded") {
+            res = this.systems.filter(s => this._mods[s.id])
         }
-        ).join(" ")
-        gridmap.add(svg.polygon(xyz).addClass('grid'))
-      }
+        else if (hab.includes(filter)) {
+            res = this.systems.filter(s => s.HI == hab.indexOf(filter) + 1)
+        } else if (filter == "Factions") {
+            res = this.systems.filter(s => s.POI && s.POI.reduce((state, poi) => {
+                return state || poi.f || poi.creator
+            }
+                , false))
+        } else if (filter == "Ruins") {
+            res = this.systems.filter(s => s.POI && s.POI.reduce((state, poi) => {
+                return state || poi.what == "Ruin" || poi.isRuin
+            }
+                , false))
+        } else if (poi.includes(filter)) {
+            let what = filter.slice(0, -1)
+            res = this.systems.filter(s => s.POI && s.POI.reduce((state, poi) => {
+                return state || poi.what == what || poi.type == what
+            }
+                , false))
+        } else {
+            res = this.systems
+        }
+
+        return res.sort((a, b) => a.name < b.name ? -1 : 1)
+    }
+    get system() {
+        return this.systems[this._system]
+    }
+    get features() {
+        return Object.values(this._features).flat()
+    }
+    /*
+      Sector Data lookup 
+    */
+    distance(x, y) {
+        let [sx, sy] = this.id
+        let dx = x - sx
+            , dy = y - sy;
+        let d = Math.sqrt(dx * dx + dy * dy)
+        return d
     }
 
-    //keep track of all claims 
-    let allClaims = [...this.factions.values()].map(f=>f._claims).flat()
-    //create the stars 
-    let stars = svg.group().attr('id', 'stars')
-    systems.forEach((s)=>{
-      let _p = s.point.map(_p=>_p * PIXELSCALE)
-      let {x, y} = isometric ? toIsometric(..._p) : {
-        x: _p[0],
-        y: _p[1]
-      }
-
-      let _star = svg.circle(s._r * 1.5).attr({
-        cx: x,
-        cy: y
-      }).fill(s._color).addClass('star').data({
-        i : s.i
-      }).click(async function() {
-        let _i = this.data("i")
-
-        console.log(app.system)
-        app.dialog = "System." + _i
-      })
-      if (s.claim > -1) {
-        _star.attr({
-          stroke: this.factions.find(f=>f.id == s.claim).color,
-          'stroke-width': 3
-        })
-      }
-
-      stars.add(_star)
+    //check for same sector 
+    isSameSector(x, y) {
+        return this.id[0] == x && this.id[1] == y
     }
-    )
 
-    //size 
-    let {x, y, height, width} = app.state.filterSystem == "All" ? stars.bbox() : gridmap.bbox()
-    //viewbox
-    svg.attr('viewBox', [x, y, width, height].join(" "))
-  }
+    addCrosshair(x, y) {
+        let crosshairs = SVG.find("#crosshairs");
+        crosshairs.clear();
+        //styles 
+        let s = { color: "white", width: 0.5 };
+        let xl = crosshairs.line(x, 0, x, 100).stroke(s);
+        let yl = crosshairs.line(0, y, 100, y).stroke(s);
+    }
+
+    async display(opts = {}) {
+        if (SVG('svg')) {
+            SVG.find('svg').remove();
+        }
+        SVG.find('#starryHost').hide();
+
+        //gui 
+        this.selectedSystem = this.selectedSystem || this.systems[0];
+
+        //svg display
+        let app = App
+        const SECTOR = 1000;
+        let svg = SVG().addTo('#map').size('100%', '100%');
+        let crosshairs = svg.group().attr('id', 'crosshairs');
+
+        //get display options 
+        let { filter = this.filter, isometric = false } = opts
+
+        //create the grid 
+        let gridmap = svg.group().attr('id', 'gridmap')
+        gridmap.back()
+
+        // Create a simple grid for visual reference
+        const gridSize = 100;
+        for (let i = 0; i < 10; i++) {
+            for (let j = 0; j < 10; j++) {
+                const x = i * gridSize - 500;
+                const y = j * gridSize - 500;
+                const points = [
+                    [x, y],
+                    [x + gridSize, y],
+                    [x + gridSize, y + gridSize],
+                    [x, y + gridSize]
+                ];
+                const pointsStr = points.map(p => p.join(",")).join(" ");
+                gridmap.add(svg.polygon(pointsStr).addClass('grid'));
+            }
+        }
+
+        //create the stars 
+        let stars = svg.group().attr('id', 'stars')
+        let systems = this.showSystems(filter)
+
+        systems.forEach((system) => {
+            let sector = this
+            let G = App.galaxy
+            let _p = system.position
+            let x, y;
+
+            if (isometric) {
+                const iso = toIsometric(_p.x, _p.y, _p.z);
+                x = iso.x;
+                y = iso.y;
+            } else {
+                x = _p.x;
+                y = _p.y;
+            }
+
+            //STAR SIZE BASED ON LUMINOSITY
+            let s_r = Math.max(Math.min(Math.log(system.star.luminosity) + 8, 20), 2);
+
+            let _star = svg.circle(s_r * 2.5).attr({
+                cx: x,
+                cy: y
+            }).fill(system.star.color || 'white').addClass('star').data({
+                seed: system.seed
+            }).click(async function () {
+                let seed = this.data("seed")
+
+                let _s = sector.systems.find(sys => sys.seed == seed)
+                let _POI = _s.POI || []
+                console.log(_s)
+
+                //update gui - show system info in top left
+                App.updateState("systemInfo", _s);
+                sector.addCrosshair(x, y);
+                sector.selectedSystem = _s;
+            })
+
+            stars.add(_star)
+        }
+        )
+
+        //adjust viewbox to see sector 
+        svg.attr('viewBox', [-500, -500, SECTOR, SECTOR].join(" "));
+
+        // Update sector info for the UI box
+        App.updateState("sectorInfo", {
+            sector: this.id.join(),
+            claim: this.claim,
+            color: this.color,
+        });
+    }
+    /*
+      UI
+    */
+    get UI() {
+    }
 }
 
-export {Sector}
+export { Sector };
